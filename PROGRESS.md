@@ -2,32 +2,40 @@
 
 Updated 2026-09-16.
 
+**Live: https://astrodivergence.pages.dev/**
+
+v1 is shipped. Every item in the definition of done is met and
+verified against the deployed site.
+
 ## Built
 
-**Phase 0 — setup.** Vite 8, React 19, TypeScript, Tailwind 4 via
-`@tailwindcss/vite`, Vitest. Git repo pushed to
-`github.com/tawanwtk/astro`.
+| Phase | State |
+|---|---|
+| 0 — setup | Done. Vite 8, React 19, TypeScript, Tailwind 4, Vitest. |
+| 1 — engine | Done. `src/engine/`, verified against reference charts. |
+| 2 — ugly UI | Done, then superseded by Phase 4. It did its job: it proved real data flowed through correctly before any design work. |
+| 3 — divergence | Done. `src/engine/divergence.ts`. |
+| 4 — design | Done. Editorial plate register, five sections, parallax last. |
+| 5 — ship | Done. Deployed to Cloudflare Pages. |
 
-**Phase 1 — the engine.** `src/engine/`, pure TypeScript, no UI.
-Positions are computed once in the tropical frame; the sidereal frame
-is that same longitude minus the Lahiri ayanamsa.
+## Definition of done
 
-**Phase 2 — the ugly UI.** Superseded by Phase 4, but it did its job:
-it proved real birth data flows through the engine correctly in a real
-browser before any design work started.
-
-**Phase 3 — divergence logic.** `src/engine/divergence.ts`. Compares
-the two frames on two independent axes and explains the cause of each.
-
-**Phase 4 — design.** Editorial plate register, warm paper, one blue
-accent reserved for marking divergence. Five sections descending. Two
-scroll-driven parallax layers, built last.
+| Requirement | State |
+|---|---|
+| Birth data in, comparison table out, divergence marked | Met |
+| Ascendant correct against two known reference charts | Met — under half an arcminute on both |
+| Works at 390px | Met — verified in a real 390px viewport |
+| Works with reduced motion | Met — verified functionally, not just in CSS |
+| Lighthouse performance ≥ 90 | Met — 96 mobile, 100 desktop |
+| Lighthouse accessibility ≥ 90 | Met — 100 |
+| Deployed to Cloudflare Pages | Met |
+| OG tags in static HTML, absolute image URL, canonical set | Met — confirmed in the served HTML |
 
 ## Verified
 
 ### Reference charts — actual versus published
 
-Run `npm run verify` to reproduce this table.
+Run `npm run verify` to reproduce.
 
 | Chart | Point | Expected | Actual | Delta |
 |---|---|---|---|---|
@@ -42,10 +50,10 @@ All seven bodies plus Ascendant and Midheaven match on both charts,
 every value under half an arcminute. Sources: Astro-Databank (Rodden
 AA) and Astrotheme.
 
-Einstein is the pre-standard-time case — the offset has to come from
-the birth longitude as Local Mean Time. Mandela is the southern
-hemisphere case; mutating the latitude sign fails both Ascendant
-assertions, so the tests are not vacuous.
+Einstein is the pre-standard-time case: the offset must come from the
+birth longitude as Local Mean Time. Mandela is the southern hemisphere
+case; mutating the latitude sign fails both Ascendant assertions, so
+the tests are not vacuous.
 
 ### Lahiri ayanamsa — actual versus published tables
 
@@ -55,83 +63,120 @@ assertions, so the tests are not vacuous.
 | 1950-01-01 | 23.15861° | 23.15873° | 0.4" |
 | 2000-01-01 | 23.85333° | 23.85707° | 13.5" |
 
-The 2000 delta is the largest and is still 13.5 arcseconds, which is
-three orders of magnitude below anything that could move a sign
-boundary. It is most likely mean-versus-true nutation between table
-sources.
+The largest delta is 13.5 arcseconds, three orders of magnitude below
+anything that could move a sign boundary. Most likely mean-versus-true
+nutation between table sources.
 
 ### Independent cross-check
 
 Every tropical longitude is asserted against `astronomy-engine`, an
-unrelated MIT implementation, and agrees to within 30 arcseconds —
-observed agreement is around 2.5. Two independent codebases cannot be
-wrong the same way.
+unrelated MIT implementation, within 30 arcseconds. Observed agreement
+is about 2.5. Two independent codebases cannot be wrong the same way.
 
-### Browser and constraints
+### Lighthouse — against the deployed URL
 
-- Production build verified in Chrome: the wasm loads and Einstein's
-  chart reproduces exactly through the form.
-- 390px verified in a real 390px viewport. Table becomes stacked plate
-  entries; no horizontal overflow.
-- `prefers-reduced-motion: reduce` verified functionally, not just in
-  the stylesheet: `animation-name` computes to `none`,
-  `animation-timeline` to `auto`, `scroll-behavior` to `auto`. Layers
-  render static at resting positions and the page is fully readable.
-- 69 tests passing.
+| | Performance | Accessibility | Best practices | SEO |
+|---|---|---|---|---|
+| Mobile | **96** | **100** | 100 | 100 |
+| Desktop | **100** | **100** | 100 | 100 |
 
-### Lighthouse — local production build, mobile preset
+Mobile: FCP 1.6s, LCP 2.7s, TBT 0ms, CLS 0. Stable at 96 across three
+runs. An earlier run returned 99; 96 is the honest repeatable figure.
 
-| Category | Score |
-|---|---|
-| Performance | 95 |
-| Accessibility | 100 |
-| Best practices | 100 |
-| SEO | 100 |
+### The deployed site, checked directly
 
-FCP 1.7s, LCP 2.8s, TBT 0ms, CLS 0.
+- Computes correctly live: Mandela's chart through the real form gives
+  Ascendant Sagittarius 14°59'55" → Scorpio 22°16'45", ayanamsa
+  22°43'10", matching local output exactly.
+- **Zero off-origin network requests** during a full session, measured
+  by intercepting every request. The central claim holds in practice.
+- Zero console errors.
+- CSP header live and enforcing `connect-src 'self'`.
+- `og.png` serves as a valid PNG at exactly 1200×630.
+- Canonical, `og:url` and `og:image` all absolute on
+  `astrodivergence.pages.dev`, present in the served static HTML.
+- `robots.txt` and `sitemap.xml` serve correctly.
+- Long-lived immutable cache headers on `/assets`, `/fonts`, `/wasm`.
+- 390px: no horizontal overflow, masthead renders, one `main` landmark.
+- `prefers-reduced-motion: reduce`: `animation-name` computes to
+  `none`, `animation-timeline` to `auto`, `scroll-behavior` to `auto`.
+  Layers render static; the page stays fully readable.
 
-**Not yet run against the deployed URL.** That is required by the
-definition of done and is outstanding.
+### Contrast
 
-## Known-broken / not yet true
+Computed rather than assumed, against the paper ground `#f3eee4`:
 
-- **Not deployed.** Cloudflare Pages needs account access. `wrangler`
-  is not authenticated here. This is the only thing standing between
-  the project and the v1 definition of done.
-- **OG, canonical and sitemap URLs are placeholders** pointing at
-  `https://divergence.pages.dev/`. They must be corrected to the real
-  hostname before the links are shared — LinkedIn will not run JS, so
-  a wrong absolute URL there is a wrong preview. `public/og.png` does
-  exist and is correct at 1200×630.
-- Lighthouse performance is 95 locally but is measured on a fast local
-  server. The deployed figure is the one that counts.
+| Token | Ratio | Verdict |
+|---|---|---|
+| `--color-ink` | 15.18:1 | AA normal |
+| `--color-ink-soft` | 8.33:1 | AA normal |
+| `--color-ink-faint` | 4.84:1 | AA normal |
+| `--color-mark` | 7.37:1 | AA normal |
+
+`--color-ink-faint` was originally 3.66:1 and used on 11–13px labels.
+Lighthouse scored accessibility 100 with that in place — its contrast
+audit samples rather than proves. It is now computed in
+`design.test.ts` and fails below 4.5:1.
+
+### Tests
+
+82 passing, covering the engine, the divergence logic, the bundled
+assets, the static metadata, and the design constraints from
+DESIGN_BRIEF.md — reduced-motion gating, transform-and-opacity-only
+keyframes, no remote `url()`, no scroll listener, no WebGL, the CSP,
+and contrast.
 
 ## Stated explicitly
 
-- **Computed, not hardcoded:** all planetary longitudes, the
-  Ascendant, Midheaven, Placidus cusps, the Lahiri ayanamsa, ΔT,
-  timezone offsets, and every house assignment.
+- **Computed, not hardcoded:** all planetary longitudes, the Ascendant,
+  Midheaven, Placidus cusps, the Lahiri ayanamsa, ΔT, timezone offsets,
+  and every house assignment.
 - **Hardcoded:** the reference chart expectations in
-  `reference-charts.ts`, which are transcribed from published sources
-  and are the point of comparison, not an output. The
-  `PLACIDUS_LATITUDE_LIMIT` of 66.0° is a deliberate conservative
-  constant, slightly inside the true polar circle at ~66.56°.
+  `reference-charts.ts`, transcribed from published sources — they are
+  the point of comparison, not an output. `PLACIDUS_LATITUDE_LIMIT` is
+  a deliberate conservative 66.0°, just inside the true polar circle at
+  about 66.56°.
 - **Approximated:** for births before standard time was adopted at a
-  location, the offset is Local Mean Time derived from the birth
-  longitude. This is the correct treatment, but it means the offset is
-  a longitude calculation rather than a legislated value, and the
-  interface says so on the result.
-- **Not a placeholder but worth naming:** an unknown birth time uses
-  noon local to place the slow bodies, and then refuses to report the
-  Ascendant or any house in either tradition. The signs shown are
-  real; the Moon carries an explicit caveat because it moves about
-  half a degree an hour.
+  location, the offset is Local Mean Time from the birth longitude.
+  That is the correct treatment, but it is a longitude calculation
+  rather than a legislated value, and the interface says so on the
+  result.
+- **Worth naming:** an unknown birth time uses noon local to place the
+  slow bodies, then refuses to report the Ascendant or any house in
+  either tradition. The signs shown are real; the Moon carries an
+  explicit caveat because it moves about half a degree an hour.
 
-## Next
+## Known limits
 
-Phase 5 — ship.
+Not defects, but true things a reader should know.
 
-1. Connect Cloudflare Pages (needs your account; see README).
-2. Correct the canonical, OG and sitemap URLs to the real hostname.
-3. Rerun Lighthouse against the deployed URL and record both scores
-   here.
+- **Placidus is withheld inside the polar circles.** Swiss Ephemeris
+  silently substitutes Porphyry there; we decline instead and say why.
+  Whole sign is unaffected.
+- **Pre-1900 timezone data is approximate by nature.** The IANA
+  database carries pre-standard-time offsets as the Local Mean Time of
+  each zone's reference city, which is why we recompute from the birth
+  longitude instead. For a birth in a place whose local time was set by
+  a nearby town clock rather than by its own meridian, the true offset
+  could differ by a few minutes.
+- **The place list has 7,281 entries.** A small town may not be there.
+  Coordinates can be checked against what is shown, but there is no
+  manual latitude/longitude entry in the UI yet — the engine supports
+  it, the form does not expose it.
+- **Lahiri has variants.** We use the standard Indian government value
+  (`SE_SIDM_LAHIRI`), not true Chitrapaksha. They differ by under an
+  arcminute.
+
+## Deliberately not built, per PROJECT_BRIEF.md
+
+Chinese and Thai systems. Chart wheels. Interpretive text generation.
+Accounts, saving, sharing, any backend.
+
+## Possible next
+
+Nothing is required. If it continues:
+
+- Manual latitude/longitude entry in the form.
+- A second ayanamsa (Raman, Krishnamurti) as a selector, to show that
+  even "the sidereal zodiac" is not one thing.
+- The Thai and Chinese engines, as a separate phase.
