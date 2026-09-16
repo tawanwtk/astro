@@ -5,7 +5,9 @@ Updated 2026-09-16.
 **Live: https://astrodivergence.pages.dev/**
 
 v1 is shipped. Every item in the definition of done is met and
-verified against the deployed site.
+verified against the deployed site. Since then: a convergence view,
+an N-system engine with toggles, and a researched decision not to
+ship Thai — see below.
 
 ## Built
 
@@ -23,6 +25,7 @@ verified against the deployed site.
 | Requirement | State |
 |---|---|
 | Birth data in, comparison table out, divergence marked | Met |
+| Convergence marked as the stronger, distinct finding | Met — separate ink and form, no status semantics |
 | Ascendant correct against two known reference charts | Met — under half an arcminute on both |
 | Works at 390px | Met — verified in a real 390px viewport |
 | Works with reduced motion | Met — verified functionally, not just in CSS |
@@ -111,7 +114,8 @@ Computed rather than assumed, against the paper ground `#f3eee4`:
 | `--color-ink` | 15.18:1 | AA normal |
 | `--color-ink-soft` | 8.33:1 | AA normal |
 | `--color-ink-faint` | 4.84:1 | AA normal |
-| `--color-mark` | 7.37:1 | AA normal |
+| `--color-mark` (divergence) | 7.37:1 | AA normal |
+| `--color-meet` (convergence) | 6.63:1 | AA normal |
 
 `--color-ink-faint` was originally 3.66:1 and used on 11–13px labels.
 Lighthouse scored accessibility 100 with that in place — its contrast
@@ -120,11 +124,35 @@ audit samples rather than proves. It is now computed in
 
 ### Tests
 
-82 passing, covering the engine, the divergence logic, the bundled
-assets, the static metadata, and the design constraints from
-DESIGN_BRIEF.md — reduced-motion gating, transform-and-opacity-only
-keyframes, no remote `url()`, no scroll listener, no WebGL, the CSP,
-and contrast.
+93 passing, covering the engine, the comparison logic, convergence and
+divergence on both axes, system selection, the bundled assets, the
+static metadata, and the design constraints from DESIGN_BRIEF.md —
+reduced-motion gating, transform-and-opacity-only keyframes, no remote
+`url()`, no scroll listener, no WebGL, the CSP, and contrast.
+
+The framing constraint from PROJECT_BRIEF.md is enforced rather than
+trusted. Every association and every generated explanation is scanned
+for second person, prediction, advice, personality claims and
+evaluative language. Injecting "Aries means that you are assertive,
+and your personality will tend toward initiative" into one association
+fails the suite, so the guard is not vacuous.
+
+### Convergence
+
+Both findings are computed per axis, independently, because sign and
+house have different causes. A row can converge on one and diverge on
+the other — Einstein's Mars keeps its sign across both systems and
+changes house — and a model that forced one verdict per row would have
+to misreport one axis.
+
+| Chart | Sign differs / agrees | House differs / agrees |
+|---|---|---|
+| Einstein | 5 / 3 | 1 / 7 |
+| Mandela | 6 / 2 | 4 / 4 |
+
+Convergence is styled as a finding, never as a pass: sepia ink with a
+solid tie and a bracketed marginal rule, against divergence's blue
+pencil with a dotted leader line. No green, no red, no icons.
 
 ## Stated explicitly
 
@@ -167,16 +195,89 @@ Not defects, but true things a reader should know.
   (`SE_SIDM_LAHIRI`), not true Chitrapaksha. They differ by under an
   arcminute.
 
+## Thai Suriyayart — researched, not shipped, and why
+
+Thai astrology was scoped as a third column on the assumption that it
+is Vedic with a different ayanamsa. **It is not, and the evidence is
+unambiguous.**
+
+Thai practice does read a sidereal zodiac with whole sign houses
+counted from the lagna, which is what makes the assumption look safe.
+But traditional Thai positions come from the Suriyayart canon
+(คัมภีร์สุริยยาตร์), a mean-motion theory in the Surya Siddhanta lineage
+that computes its own longitudes rather than reinterpreting modern
+ones.
+
+Published Thai almanac values (สมผุส) against Vedic/Lahiri for the
+same instants, two dates a year apart:
+
+| Body | 2025-07-01 | 2026-07-01 |
+|---|---|---|
+| Sun | −0.26° | −0.25° |
+| Jupiter | +0.65° | +0.44° |
+| Moon | +0.58° | +2.42° |
+| Mars | −2.02° | −1.18° |
+| Venus | −3.29° | −2.63° |
+| Mercury | −4.80° | **−20.91°** |
+| Saturn | **−5.69°** | **−5.54°** |
+
+A single ayanamsa would make that column a constant. Instead the
+implied offset spans 6.4° on one date and 23° on the other. The
+deviations are structural, not noise — Saturn sits about 5.6° behind
+on both dates, and Mercury, the hardest body to model, swings wildly.
+That per-planet signature is the fingerprint of a Surya Siddhanta
+derived theory.
+
+**How far the implementation got.** The lineage is confirmed: the Thai
+year of 292207/800 = 365.25875 days is exactly the Surya Siddhanta
+sidereal year, and a Surya Siddhanta solar model reproduces the Thai
+almanac Sun to 0.34° on both dates, consistently. The Moon and the
+five star-planets do not reproduce — errors of 3° to 25°, and the
+residual is not a fixed epoch shift, so it is not a time-offset bug.
+The Thai recension's lunar and planetary constants differ from the
+Sanskrit ones and are published in printed Thai manuscripts
+(the พระยาโหราธิบดี and บุนนาค ทองเนียม editions) rather than anywhere
+reachable online.
+
+**Why nothing shipped.** A Thai column several signs wrong would be
+worse than no Thai column, and it is exactly the failure this tool
+exists to avoid. The architecture is ready — `systems.ts` is a list,
+and the engine already takes any selection — but a system that
+computes its own positions needs its own ephemeris, not an entry in
+that list.
+
+**To finish it:** obtain the Suriyayart canon's มัธยม constants for the
+Moon and the five star-planets, implement the mean-motion theory
+alongside the Swiss Ephemeris rather than derived from it, and
+validate against the published almanac to arcminutes as the other
+reference charts are validated.
+
+## Chinese BaZi — a separate engine, not a column
+
+BaZi (八字) has no planetary axis at all. It is built from the
+sexagenary cycle — four pillars of heavenly stem and earthly branch
+for year, month, day and hour — derived from a lunisolar calendar and
+solar terms, not from ecliptic longitude. There is no sign to compare
+and no house to compare, so it cannot share a row with the systems in
+this table however the table is arranged.
+
+It needs its own engine and its own display, and the interesting
+comparison against Western and Vedic would be a different question
+than the one this table asks. Deliberately out of scope here.
+
 ## Deliberately not built, per PROJECT_BRIEF.md
 
-Chinese and Thai systems. Chart wheels. Interpretive text generation.
-Accounts, saving, sharing, any backend.
+Chart wheels. Interpretive text generation. Accounts, saving,
+sharing, any backend.
 
 ## Possible next
 
-Nothing is required. If it continues:
-
-- Manual latitude/longitude entry in the form.
-- A second ayanamsa (Raman, Krishnamurti) as a selector, to show that
-  even "the sidereal zodiac" is not one thing.
-- The Thai and Chinese engines, as a separate phase.
+- **A third system, so the toggles become live.** The cheapest real
+  one is a second ayanamsa — Raman or Krishnamurti — which would show
+  that even "the sidereal zodiac" is not one thing, and would make the
+  convergence view considerably more interesting than it can be with
+  two systems.
+- Manual latitude/longitude entry in the form. The engine supports it;
+  the form does not expose it.
+- Thai Suriyayart, once the canon's constants are in hand.
+- BaZi, as its own engine with its own display.
