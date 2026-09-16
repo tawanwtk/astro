@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# wasm payload is copied from node_modules at build time
+public/wasm/
