@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>og</title>
+<style>
+  @font-face {
+    font-family: 'Source Serif 4 Variable';
+    src: url('./source-serif.woff2') format('woff2-variations');
+    font-weight: 200 900;
+  }
+  * { margin: 0; box-sizing: border-box; }
+  html, body { width: 1200px; height: 630px; overflow: hidden; }
+  body {
+    background: #f3eee4;
+    background-image:
+      radial-gradient(ellipse 120% 70% at 30% 0%, #f8f4ec 0%, transparent 60%),
+      radial-gradient(ellipse 90% 60% at 90% 100%, #e7dfd0 0%, transparent 55%);
+    color: #1b1915;
+    font-family: 'Source Serif 4 Variable', Georgia, serif;
+    font-optical-sizing: auto;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 0 76px;
+  }
+  svg { position: absolute; right: -60px; top: 50%; transform: translateY(-50%); opacity: 0.5; }
+  h1 { font-size: 132px; letter-spacing: -0.035em; line-height: 0.9; font-weight: 600; }
+  p { font-size: 33px; line-height: 1.35; margin-top: 30px; max-width: 17ch; color: #1b1915; }
+  em { font-style: normal; color: #27506f; }
+  .foot {
+    position: absolute; left: 76px; bottom: 54px;
+    font-size: 16px; letter-spacing: 0.16em; text-transform: uppercase; color: #837a6b;
+  }
+</style>
+</head>
+<body>
+  <svg width="560" height="560" viewBox="-260 -260 520 520" fill="none">
+    <g stroke="#1b1915" stroke-width="1.2" opacity="0.65">
+      <circle r="240"/><circle r="200"/>
+      <g id="t"></g>
+      <line x1="200" y1="0" x2="262" y2="0" stroke-width="2.4"/>
+    </g>
+    <g stroke="#27506f" stroke-width="1.2" opacity="0.9" transform="rotate(-24)">
+      <circle r="188" stroke-dasharray="2.5 4"/><circle r="148" stroke-dasharray="2.5 4"/>
+      <g id="s"></g>
+      <line x1="148" y1="0" x2="210" y2="0" stroke-width="2.4"/>
+    </g>
+    <g stroke="#27506f" stroke-width="3" opacity="1">
+      <path d="M 112 0 A 112 112 0 0 0 102.30 -45.56"/>
+    </g>
+  </svg>
+  <h1>Divergence</h1>
+  <p>Where Western and Vedic astrology <em>disagree</em>.</p>
+  <div class="foot">Computed in your browser · nothing is transmitted</div>
+  <script>
+    const mk = (id, outer, inner) => {
+      const g = document.getElementById(id);
+      for (let i = 0; i < 12; i++) {
+        const a = (i * 30) * Math.PI / 180;
+        const l = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        l.setAttribute('x1', inner * Math.cos(a)); l.setAttribute('y1', inner * Math.sin(a));
+        l.setAttribute('x2', outer * Math.cos(a)); l.setAttribute('y2', outer * Math.sin(a));
+        g.appendChild(l);
+      }
+    };
+    mk('t', 240, 200); mk('s', 188, 148);
+  </script>
+</body>
+</html>

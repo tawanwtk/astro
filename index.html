@@ -3,6 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <meta name="theme-color" content="#f3eee4" />
+
+    <!--
+      The masthead is the LCP element and it is set in this face, so the font
+      is fetched at the same time as the stylesheet rather than after it.
+      Self-hosted: no font CDN, no network call to a third party.
+    -->
+    <link
+      rel="preload"
+      as="font"
+      type="font/woff2"
+      href="/fonts/source-serif-4-latin.woff2"
+      crossorigin
+    />
 
     <title>Divergence — where astrological traditions disagree</title>
     <meta

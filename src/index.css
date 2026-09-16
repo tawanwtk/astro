@@ -1,1 +1,822 @@
 @import "tailwindcss";
+
+/*
+ * Divergence -- the design layer.
+ *
+ * Register: an astronomical plate or a scientific atlas. Something that
+ * documents a system, not something that sells a reading. Warm paper, dark
+ * ink, one restrained accent reserved entirely for marking divergence.
+ *
+ * No colour scheme switch. The premise of the page is a printed document, and
+ * a dark mode would contradict it, so the ground stays paper deliberately
+ * rather than by omission.
+ */
+
+/*
+ * Self-hosted, latin subset only. Fonts are never fetched at runtime: a
+ * request to a font CDN would be a network call after page load, which this
+ * project does not make.
+ */
+@font-face {
+  font-family: 'Source Serif 4 Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 900;
+  src: url('/fonts/source-serif-4-latin.woff2')
+    format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@theme {
+  /* Warm paper ground, dark warm ink. */
+  --color-paper: #f3eee4;
+  --color-paper-deep: #e9e2d4;
+  --color-ink: #1b1915;
+  --color-ink-soft: #4a443a;
+  --color-ink-faint: #837a6b;
+  --color-rule: #d3cabb;
+
+  /*
+   * The divergence accent. A blue pencil -- the mark an editor makes on a
+   * proof. Not red, not a warning: divergence is the interesting case, so the
+   * accent has to read as annotation, not as error.
+   */
+  --color-mark: #27506f;
+  --color-mark-soft: #8ba4b9;
+
+  --font-serif: 'Source Serif 4 Variable', 'Iowan Old Style', 'Palatino Linotype',
+    'Source Serif Pro', Georgia, 'Times New Roman', serif;
+}
+
+:root {
+  color-scheme: light;
+  /* Optical sizing does real work here: display sizes tighten, text loosens. */
+  font-optical-sizing: auto;
+  font-variant-numeric: tabular-nums;
+  -webkit-text-size-adjust: 100%;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-serif);
+  font-size: 1.0625rem;
+  line-height: 1.65;
+  /* Paper, not a flat fill: a faint warm gradient so the ground has depth. */
+  background-image:
+    radial-gradient(ellipse 120% 60% at 50% 0%, #f8f4ec 0%, transparent 60%),
+    radial-gradient(ellipse 100% 50% at 50% 100%, #ebe3d4 0%, transparent 55%);
+  background-attachment: fixed;
+}
+
+::selection {
+  background-color: color-mix(in srgb, var(--color-mark) 18%, transparent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-mark);
+  outline-offset: 3px;
+}
+
+/* ---------------------------------------------------------------- layers  */
+
+/*
+ * Three layers descending at different rates. Far and mid are texture and are
+ * hidden from assistive technology entirely; the near layer is the page.
+ *
+ * Everything animated here is a transform or an opacity. No layout property is
+ * ever animated, and native scroll is never intercepted.
+ */
+.layers {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  contain: strict;
+}
+
+.layer {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  will-change: transform;
+}
+
+.layer svg {
+  width: min(150vmax, 1900px);
+  height: auto;
+  overflow: visible;
+}
+
+.layer-far {
+  opacity: 0.2;
+}
+
+/*
+ * The mid layer is placed rather than centred: it sits off to one side so the
+ * masthead type is never fighting it for the same space.
+ */
+.layer-mid {
+  opacity: 0.45;
+  place-items: center end;
+  padding-right: max(4vw, 1.5rem);
+}
+
+.layer-mid svg {
+  width: min(52vmin, 420px);
+}
+
+@media (max-width: 46rem) {
+  .layer-mid {
+    place-items: start center;
+    padding: 12vh 0 0;
+    opacity: 0.4;
+  }
+
+  .layer-mid svg {
+    width: min(78vmin, 340px);
+  }
+}
+
+/*
+ * Scroll-driven animation, native, no JavaScript and no scroll listener.
+ *
+ * Gated three ways: on reduced motion, on support for scroll timelines, and
+ * on a viewport tall enough that the drift is not just jitter. Where any gate
+ * fails, the layers simply render static at their resting positions and the
+ * page is unchanged in every other respect -- the design does not depend on
+ * the movement, which is why parallax was built last.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: scroll()) {
+    .layer-far {
+      animation: drift-far linear both;
+      animation-timeline: scroll(root block);
+    }
+
+    /*
+     * The mid layer drifts and fades. By the time the comparison arrives it
+     * is gone entirely -- the reader has descended through the frames and
+     * out the other side, and the results must be fully legible on plain
+     * paper rather than read through a diagram.
+     */
+    .layer-mid {
+      animation: drift-mid linear both;
+      animation-timeline: scroll(root block);
+      animation-range: 0% 55%;
+    }
+  }
+}
+
+@keyframes drift-far {
+  from {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+  to {
+    transform: translate3d(0, -9vh, 0) rotate(8deg);
+  }
+}
+
+@keyframes drift-mid {
+  from {
+    transform: translate3d(0, 6vh, 0) scale(1);
+    opacity: 0.55;
+  }
+  60% {
+    opacity: 0.4;
+  }
+  to {
+    transform: translate3d(0, -26vh, 0) scale(1.1);
+    opacity: 0;
+  }
+}
+
+/* ---------------------------------------------------------------- shell   */
+
+.shell {
+  position: relative;
+  z-index: 1;
+  width: min(100% - 3rem, 68rem);
+  margin-inline: auto;
+}
+
+@media (max-width: 30rem) {
+  .shell {
+    width: calc(100% - 2rem);
+  }
+}
+
+.measure {
+  max-width: 34rem;
+}
+
+section {
+  scroll-margin-top: 2rem;
+}
+
+/* ---------------------------------------------------------- section marks */
+
+.plate-number {
+  display: block;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-ink-faint);
+  margin-bottom: 1.25rem;
+}
+
+.plate-number::after {
+  content: '';
+  display: block;
+  width: 3rem;
+  height: 1px;
+  margin-top: 0.5rem;
+  background-color: var(--color-rule);
+}
+
+h1,
+h2,
+h3 {
+  font-weight: 600;
+  line-height: 1.08;
+  text-wrap: balance;
+  margin: 0;
+}
+
+h2 {
+  font-size: clamp(1.75rem, 1.2rem + 2vw, 2.75rem);
+  letter-spacing: -0.015em;
+}
+
+h3 {
+  font-size: 1.1875rem;
+  letter-spacing: -0.005em;
+}
+
+p {
+  text-wrap: pretty;
+}
+
+/* ---------------------------------------------------------------- masthead */
+
+.masthead {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding-block: 6rem 4rem;
+}
+
+.masthead h1 {
+  font-size: clamp(3.25rem, 1.5rem + 9vw, 9rem);
+  letter-spacing: -0.035em;
+  line-height: 0.92;
+}
+
+.masthead .premise {
+  font-size: clamp(1.125rem, 1rem + 0.7vw, 1.5rem);
+  line-height: 1.45;
+  margin-top: 2rem;
+  max-width: 30ch;
+}
+
+.masthead .premise em {
+  font-style: normal;
+  color: var(--color-mark);
+}
+
+.rule {
+  border: 0;
+  border-top: 1px solid var(--color-rule);
+  margin: 0;
+}
+
+.rule-heavy {
+  border-top-width: 2px;
+  border-top-color: var(--color-ink);
+}
+
+/* ---------------------------------------------------------------- record  */
+
+/*
+ * The input reads as a record being filled in, not a checkpoint being
+ * cleared: ruled lines, labels in the margin, no boxes.
+ */
+.record {
+  display: grid;
+  gap: 0;
+  max-width: 34rem;
+}
+
+.field {
+  display: grid;
+  grid-template-columns: 9rem 1fr;
+  align-items: baseline;
+  gap: 1rem;
+  padding-block: 0.875rem;
+  border-bottom: 1px solid var(--color-rule);
+}
+
+@media (max-width: 34rem) {
+  .field {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+  }
+}
+
+.field > .label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-ink-faint);
+}
+
+.field input[type='text'],
+.field input[type='date'],
+.field input[type='time'],
+.field input[type='number'] {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--color-ink);
+  font: inherit;
+  font-size: 1.0625rem;
+  padding: 0.125rem 0;
+}
+
+.field input::placeholder {
+  color: var(--color-ink-faint);
+  opacity: 0.7;
+}
+
+.checkline {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding-block: 0.875rem;
+  border-bottom: 1px solid var(--color-rule);
+  font-size: 0.9375rem;
+}
+
+.checkline input {
+  accent-color: var(--color-mark);
+  width: 1rem;
+  height: 1rem;
+}
+
+.suggestions {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  border: 1px solid var(--color-rule);
+  background-color: color-mix(in srgb, var(--color-paper) 70%, white);
+  max-height: 15rem;
+  overflow-y: auto;
+}
+
+.suggestions li + li {
+  border-top: 1px solid var(--color-rule);
+}
+
+.suggestions button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 0.9375rem;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  color: var(--color-ink);
+}
+
+.suggestions button:hover {
+  background-color: var(--color-paper-deep);
+}
+
+.suggestions .meta {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--color-ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.action {
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-paper);
+  background-color: var(--color-ink);
+  border: 0;
+  padding: 0.875rem 2rem;
+  cursor: pointer;
+  transition: background-color 120ms linear;
+}
+
+.action:hover:not(:disabled) {
+  background-color: var(--color-mark);
+}
+
+.action:disabled {
+  opacity: 0.45;
+  cursor: progress;
+}
+
+/* ---------------------------------------------------------------- frames  */
+
+.frames-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2.5rem;
+}
+
+@media (max-width: 46rem) {
+  .frames-grid {
+    grid-template-columns: 1fr;
+    gap: 2rem;
+  }
+}
+
+.frame-card h3 {
+  margin-bottom: 0.75rem;
+}
+
+.frame-card p {
+  font-size: 0.9375rem;
+  color: var(--color-ink-soft);
+  margin: 0 0 0.875rem;
+}
+
+.frame-card .sub {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-ink-faint);
+  margin-bottom: 0.25rem;
+}
+
+/* -------------------------------------------------------------- the table */
+
+/*
+ * The results sit on paper, always.
+ *
+ * In browsers with scroll timelines the mid layer has already faded out by
+ * this point. In browsers without them it has not, so the plate carries its
+ * own feathered paper ground and the figures are legible either way. The
+ * design does not depend on the layer behaving.
+ */
+.plate-ground {
+  position: relative;
+  background-color: var(--color-paper);
+  box-shadow: 0 0 3.5rem 2.5rem var(--color-paper);
+}
+
+.plate {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.plate caption {
+  text-align: left;
+  font-size: 0.8125rem;
+  color: var(--color-ink-soft);
+  padding-bottom: 1rem;
+}
+
+.plate thead th {
+  text-align: left;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-ink-faint);
+  padding: 0 0.75rem 0.625rem;
+  border-bottom: 2px solid var(--color-ink);
+  vertical-align: bottom;
+}
+
+.plate td,
+.plate tbody th {
+  padding: 0.8125rem 0.75rem;
+  border-bottom: 1px solid var(--color-rule);
+  vertical-align: baseline;
+  text-align: left;
+}
+
+.plate .col-index {
+  width: 2.5rem;
+  color: var(--color-ink-faint);
+  font-size: 0.8125rem;
+  padding-left: 0;
+}
+
+.plate .col-body {
+  font-weight: 600;
+}
+
+.plate .house {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--color-ink-faint);
+  letter-spacing: 0.04em;
+}
+
+.plate .retro {
+  font-size: 0.75rem;
+  color: var(--color-ink-faint);
+}
+
+/*
+ * The divergence marker.
+ *
+ * A marginal rule in the accent, a shift in ink weight, and a drafting-style
+ * leader line joining the two differing values. An annotation on a document,
+ * not an error state.
+ *
+ * The marking is specific about which axis disagrees. A row whose houses
+ * differ but whose sign matches gets its house labels marked and its sign
+ * values left quiet, so the mark always points at the actual disagreement
+ * rather than at the whole row.
+ */
+.plate tr.diverges .col-index {
+  position: relative;
+  color: var(--color-mark);
+  font-weight: 600;
+}
+
+.plate tr.diverges .col-index::before {
+  content: '';
+  position: absolute;
+  left: -0.75rem;
+  top: 0.5rem;
+  bottom: 0.5rem;
+  width: 2px;
+  background-color: var(--color-mark);
+}
+
+.plate tr.sign-diverges .value-tropical,
+.plate tr.sign-diverges .value-sidereal {
+  position: relative;
+  color: var(--color-mark);
+  font-weight: 600;
+}
+
+/* The leader line: a dotted rule under both differing values, the way a
+   drafting note connects a callout to the thing it annotates. */
+.plate tr.sign-diverges .value-tropical::after,
+.plate tr.sign-diverges .value-sidereal::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -0.1875rem;
+  border-bottom: 1px dotted var(--color-mark-soft);
+}
+
+.plate tr.house-diverges .house {
+  color: var(--color-mark);
+  font-weight: 600;
+}
+
+.mark-note {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-mark);
+  white-space: nowrap;
+}
+
+.mark-none {
+  font-size: 0.6875rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-ink-faint);
+}
+
+.why {
+  margin-top: 0.5rem;
+}
+
+.why summary {
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  color: var(--color-ink-faint);
+  cursor: pointer;
+  list-style: none;
+}
+
+.why summary::-webkit-details-marker {
+  display: none;
+}
+
+.why summary::before {
+  content: '+ ';
+}
+
+.why[open] summary::before {
+  content: '– ';
+}
+
+.why summary:hover {
+  color: var(--color-mark);
+}
+
+.why p {
+  font-size: 0.875rem;
+  color: var(--color-ink-soft);
+  margin: 0.5rem 0 0;
+  max-width: 52ch;
+}
+
+/* The same data as stacked plate entries, for narrow viewports. */
+.entries {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.entry {
+  padding: 1.125rem 0 1.125rem 1rem;
+  border-bottom: 1px solid var(--color-rule);
+  position: relative;
+}
+
+.entry.diverges {
+  border-left: 2px solid var(--color-mark);
+}
+
+.entry-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.625rem;
+}
+
+.entry-name {
+  font-weight: 600;
+  font-size: 1.0625rem;
+}
+
+.entry-index {
+  font-size: 0.75rem;
+  color: var(--color-ink-faint);
+}
+
+.entry.diverges .entry-index {
+  color: var(--color-mark);
+}
+
+.entry-frames {
+  display: grid;
+  gap: 0.375rem;
+}
+
+.entry-frame {
+  display: grid;
+  grid-template-columns: 5.5rem 1fr;
+  gap: 0.75rem;
+  align-items: baseline;
+  font-size: 0.9375rem;
+}
+
+.entry-frame .tag {
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-ink-faint);
+}
+
+.entry.sign-diverges .entry-frame .value {
+  color: var(--color-mark);
+  font-weight: 600;
+}
+
+.entry-frame .house {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--color-ink-faint);
+  letter-spacing: 0.04em;
+}
+
+.entry.house-diverges .entry-frame .house {
+  color: var(--color-mark);
+  font-weight: 600;
+}
+
+/* The leader line, vertical here: it connects the two stacked values. */
+.entry.sign-diverges .entry-frames {
+  position: relative;
+}
+
+.entry.sign-diverges .entry-frames::before {
+  content: '';
+  position: absolute;
+  left: 4.75rem;
+  top: 0.75rem;
+  bottom: 0.75rem;
+  border-left: 1px dotted var(--color-mark-soft);
+}
+
+/* ---------------------------------------------------------------- notices */
+
+.notice {
+  border-left: 2px solid var(--color-ink-faint);
+  padding: 0.25rem 0 0.25rem 1rem;
+  font-size: 0.875rem;
+  color: var(--color-ink-soft);
+  max-width: 48ch;
+}
+
+.summary-line {
+  font-size: clamp(1.0625rem, 1rem + 0.5vw, 1.25rem);
+  line-height: 1.5;
+  max-width: 44ch;
+}
+
+.summary-line strong {
+  font-weight: 600;
+  color: var(--color-mark);
+}
+
+.readout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 2.5rem;
+  font-size: 0.8125rem;
+  color: var(--color-ink-faint);
+}
+
+.readout div {
+  padding-block: 0.25rem;
+}
+
+.readout dt {
+  font-size: 0.625rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.readout dd {
+  margin: 0;
+  color: var(--color-ink-soft);
+}
+
+/* -------------------------------------------------------------- colophon  */
+
+.colophon {
+  padding-block: 4rem 6rem;
+  font-size: 0.875rem;
+  color: var(--color-ink-soft);
+}
+
+.colophon h2 {
+  font-size: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.colophon p {
+  max-width: 46ch;
+  margin: 0 0 1rem;
+}
+
+.colophon a {
+  color: var(--color-mark);
+  text-underline-offset: 0.2em;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
