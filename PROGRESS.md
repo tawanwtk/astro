@@ -29,7 +29,7 @@ ship Thai — see below.
 | Ascendant correct against two known reference charts | Met — under half an arcminute on both |
 | Works at 390px | Met — verified in a real 390px viewport |
 | Works with reduced motion | Met — verified functionally, not just in CSS |
-| Lighthouse performance ≥ 90 | Met — 96 mobile, 100 desktop |
+| Lighthouse performance ≥ 90 | Met — 93 mobile, 100 desktop |
 | Lighthouse accessibility ≥ 90 | Met — 100 |
 | Deployed to Cloudflare Pages | Met |
 | OG tags in static HTML, absolute image URL, canonical set | Met — confirmed in the served HTML |
@@ -80,17 +80,20 @@ is about 2.5. Two independent codebases cannot be wrong the same way.
 
 | | Performance | Accessibility | Best practices | SEO |
 |---|---|---|---|---|
-| Mobile | **96** | **100** | 100 | 100 |
+| Mobile | **93** | **100** | 100 | 100 |
 | Desktop | **100** | **100** | 100 | 100 |
 
-Mobile: FCP 1.6s, LCP 2.7s, TBT 0ms, CLS 0. Stable at 96 across three
-runs. An earlier run returned 99; 96 is the honest repeatable figure.
+Mobile was 96 before the convergence work and is 93 after it — the
+comparison table roughly doubled in markup and the stylesheet grew.
+Still comfortably over the 90 floor, and recorded as it is rather
+than as the better earlier figure.
 
 ### The deployed site, checked directly
 
-- Computes correctly live: Mandela's chart through the real form gives
-  Ascendant Sagittarius 14°59'55" → Scorpio 22°16'45", ayanamsa
-  22°43'10", matching local output exactly.
+- Computes correctly live, and the convergence view with it: Einstein's
+  chart through the real form reports 5 of 8 signs differing and 3
+  agreeing, 1 house differing and 7 agreeing, with attributed
+  associations rendered on every converging row.
 - **Zero off-origin network requests** during a full session, measured
   by intercepting every request. The central claim holds in practice.
 - Zero console errors.
