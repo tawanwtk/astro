@@ -16,7 +16,8 @@
     "copy:wasm": "node scripts/copy-wasm.mjs",
     "prebuild": "node scripts/copy-wasm.mjs",
     "predev": "node scripts/copy-wasm.mjs",
-    "build:og": "node scripts/build-og.mjs"
+    "build:og": "node scripts/build-og.mjs",
+    "postbuild": "node scripts/copy-headers.mjs"
   },
   "dependencies": {
     "@fontsource-variable/source-serif-4": "^5.3.0",

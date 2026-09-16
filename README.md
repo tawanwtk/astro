@@ -34,6 +34,26 @@ npm test           # engine tests against reference charts
 npm run build      # static build to dist/
 ```
 
+## Deploy — Cloudflare Pages
+
+Build settings:
+
+| Setting | Value |
+|---|---|
+| Framework preset | Vite |
+| Build command | `npm run build` |
+| Output directory | `dist` |
+| Node version | 20 or later |
+
+`_headers` is copied into `dist` by the build and carries the
+Content-Security-Policy. `connect-src 'self'` means the no-network
+promise is enforced by the browser rather than resting on the source
+continuing to contain no fetch call.
+
+After the first deploy, replace the placeholder hostname
+`divergence.pages.dev` in `index.html` (canonical and `og:*`),
+`public/robots.txt` and `public/sitemap.xml` with the real one.
+
 ## Licence
 
 AGPL-3.0-or-later. This project bundles the Swiss Ephemeris, which is

@@ -112,6 +112,29 @@ describe('offline and honest', () => {
   })
 })
 
+describe('the no-network promise is enforced, not just intended', () => {
+  const headers = readFileSync('_headers', 'utf8')
+
+  it('ships a CSP that blocks any request to a third party', () => {
+    // The claim that birth data never leaves the browser should not rest on
+    // the code continuing to contain no fetch call. `connect-src 'self'` makes
+    // the browser enforce it: a request to anywhere else is blocked outright.
+    expect(headers).toMatch(/connect-src 'self'/)
+    expect(headers).toMatch(/default-src 'self'/)
+    expect(headers).toMatch(/font-src 'self'/)
+    // The form has no action and never navigates; blocking it means a
+    // JavaScript failure cannot turn it into a plain GET with the birth data
+    // in the query string.
+    expect(headers).toMatch(/form-action 'none'/)
+    // WebAssembly compilation needs this and nothing weaker.
+    expect(headers).toMatch(/script-src 'self' 'wasm-unsafe-eval'/)
+  })
+
+  it('sends no referrer', () => {
+    expect(headers).toMatch(/Referrer-Policy: no-referrer/)
+  })
+})
+
 describe('no scroll hijacking', () => {
   const app = readFileSync('src/App.tsx', 'utf8')
   const layers = readFileSync('src/components/Layers.tsx', 'utf8')
