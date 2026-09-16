@@ -9,19 +9,10 @@
 import { useEffect, useState } from 'react'
 
 import { type BirthData, type Chart, computeChart } from './engine/chart'
+import { type Divergence, compareFrames } from './engine/divergence'
 import { type Place, formatCoordinates, loadPlaces, searchPlaces } from './data/places'
 
-function PlacementTable({ chart }: { chart: Chart }) {
-  const rows = [
-    ...(chart.tropical.ascendant ? ['ascendant' as const] : []),
-    ...chart.tropical.placements.map((p) => p.point),
-  ]
-
-  const find = (frame: Chart['tropical'], point: string) =>
-    point === 'ascendant'
-      ? frame.ascendant
-      : frame.placements.find((p) => p.point === point) ?? null
-
+function ComparisonTable({ divergence }: { divergence: Divergence }) {
   return (
     <table border={1} cellPadding={4}>
       <thead>
@@ -31,30 +22,38 @@ function PlacementTable({ chart }: { chart: Chart }) {
           <th>House</th>
           <th>Vedic sidereal (whole sign)</th>
           <th>House</th>
+          <th>Diverges</th>
+          <th>Why</th>
         </tr>
       </thead>
       <tbody>
-        {rows.map((point) => {
-          const tropical = find(chart.tropical, point)
-          const sidereal = find(chart.sidereal, point)
-          if (!tropical || !sidereal) return null
-
-          return (
-            <tr key={point}>
-              <td>{tropical.label}</td>
-              <td>
-                {tropical.formatted}
-                {tropical.retrograde ? ' R' : ''}
-              </td>
-              <td>{tropical.house ?? 'undefined'}</td>
-              <td>
-                {sidereal.formatted}
-                {sidereal.retrograde ? ' R' : ''}
-              </td>
-              <td>{sidereal.house ?? 'undefined'}</td>
-            </tr>
-          )
-        })}
+        {divergence.rows.map((row) => (
+          <tr key={row.point}>
+            <td>{row.label}</td>
+            <td>
+              {row.tropical.formatted}
+              {row.tropical.retrograde ? ' R' : ''}
+            </td>
+            <td>{row.tropical.house ?? '—'}</td>
+            <td>
+              {row.sidereal.formatted}
+              {row.sidereal.retrograde ? ' R' : ''}
+            </td>
+            <td>{row.sidereal.house ?? '—'}</td>
+            <td>
+              {row.diverges
+                ? [
+                  row.sign.verdict === 'diverge' ? 'sign' : null,
+                  row.house.verdict === 'diverge' ? 'house' : null,
+                ].filter(Boolean).join(' + ')
+                : 'no'}
+            </td>
+            <td>
+              <p>{row.sign.explanation}</p>
+              <p>{row.house.explanation}</p>
+            </td>
+          </tr>
+        ))}
       </tbody>
     </table>
   )
@@ -70,6 +69,7 @@ export default function App() {
   const [timeKnown, setTimeKnown] = useState(true)
 
   const [chart, setChart] = useState<Chart | null>(null)
+  const [divergence, setDivergence] = useState<Divergence | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -101,10 +101,13 @@ export default function App() {
 
     setBusy(true)
     try {
-      setChart(await computeChart(birth))
+      const computed = await computeChart(birth)
+      setChart(computed)
+      setDivergence(compareFrames(computed))
     } catch (cause) {
       setError(String(cause))
       setChart(null)
+      setDivergence(null)
     } finally {
       setBusy(false)
     }
@@ -213,7 +216,18 @@ export default function App() {
             </ul>
           )}
 
-          <PlacementTable chart={chart} />
+          {divergence && (
+            <>
+              <p>
+                {divergence.signDivergences} of {divergence.total} placements fall in a
+                different sign; {divergence.houseDivergences} fall in a different house.
+                The two zodiacs are {divergence.ayanamsaFormatted} apart, so a placement
+                keeps its sign only in the last{' '}
+                {divergence.agreementWindowDegrees.toFixed(2)}° of a tropical sign.
+              </p>
+              <ComparisonTable divergence={divergence} />
+            </>
+          )}
         </section>
       )}
     </main>
