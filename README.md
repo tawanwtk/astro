@@ -50,9 +50,11 @@ Content-Security-Policy. `connect-src 'self'` means the no-network
 promise is enforced by the browser rather than resting on the source
 continuing to contain no fetch call.
 
-After the first deploy, replace the placeholder hostname
-`divergence.pages.dev` in `index.html` (canonical and `og:*`),
-`public/robots.txt` and `public/sitemap.xml` with the real one.
+The canonical hostname is `https://astrodivergence.pages.dev/`. It is
+set in `index.html` (canonical and `og:*`), `public/robots.txt` and
+`public/sitemap.xml`. The `og:image` URL must stay absolute -- LinkedIn
+and most crawlers do not run JavaScript and will not resolve a relative
+one.
 
 ## Licence
 
