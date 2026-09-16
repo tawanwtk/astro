@@ -112,6 +112,55 @@ describe('offline and honest', () => {
   })
 })
 
+describe('contrast on the paper ground', () => {
+  /*
+   * DESIGN_BRIEF.md says contrast on the paper ground must be checked, not
+   * assumed. It is worth checking here rather than leaning on Lighthouse:
+   * Lighthouse scored accessibility 100 while the muted label colour was
+   * sitting at 3.66:1 on 11px text.
+   */
+  function token(name: string): [number, number, number] {
+    const match = css.match(new RegExp(`--color-${name}:\\s*#([0-9a-f]{6})`, 'i'))
+    if (!match) throw new Error(`token --color-${name} not found`)
+    const hex = match[1]
+    return [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16)) as [number, number, number]
+  }
+
+  function relativeLuminance([r, g, b]: [number, number, number]): number {
+    const channel = (value: number) => {
+      const c = value / 255
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+    }
+    return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+  }
+
+  function contrastRatio(a: [number, number, number], b: [number, number, number]): number {
+    const [high, low] = [relativeLuminance(a), relativeLuminance(b)].sort((x, y) => y - x)
+    return (high + 0.05) / (low + 0.05)
+  }
+
+  const paper = () => token('paper')
+
+  it.each([
+    // Every one of these is used somewhere at normal text size, including the
+    // 11-13px uppercase labels, so all must clear 4.5:1 rather than 3:1.
+    ['ink', 4.5],
+    ['ink-soft', 4.5],
+    ['ink-faint', 4.5],
+    ['mark', 4.5],
+  ])('--color-%s clears AA for normal text on paper', (name, minimum) => {
+    const ratio = contrastRatio(token(name), paper())
+    expect(
+      ratio,
+      `--color-${name} is ${ratio.toFixed(2)}:1 on the paper ground, below ${minimum}:1`,
+    ).toBeGreaterThanOrEqual(minimum)
+  })
+
+  it('keeps the button legible in reverse', () => {
+    expect(contrastRatio(paper(), token('ink'))).toBeGreaterThanOrEqual(4.5)
+  })
+})
+
 describe('the no-network promise is enforced, not just intended', () => {
   const headers = readFileSync('_headers', 'utf8')
 

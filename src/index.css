@@ -35,7 +35,13 @@
   --color-paper-deep: #e9e2d4;
   --color-ink: #1b1915;
   --color-ink-soft: #4a443a;
-  --color-ink-faint: #837a6b;
+  /*
+   * 4.84:1 on the paper ground. This ramp is used for 11-13px labels -- plate
+   * numbers, field labels, house annotations -- so it has to clear AA for
+   * normal text, not large. The obvious lighter warm grey sat at 3.66:1 and
+   * Lighthouse did not catch it.
+   */
+  --color-ink-faint: #6f6757;
   --color-rule: #d3cabb;
 
   /*
