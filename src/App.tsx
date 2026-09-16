@@ -5,54 +5,148 @@
  * Composition varies between them deliberately -- descending should feel like
  * moving through different places, not past repeated blocks.
  */
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 
 import type { BirthData, Chart } from './engine/chart'
-import { type Divergence, type DivergenceRow, FRAME_EXPLANATIONS, compareFrames } from './engine/divergence'
+import {
+  type Comparison, type ComparisonRow, FRAME_EXPLANATIONS, compareFrames,
+} from './engine/divergence'
+import {
+  DEFAULT_SELECTION, SYSTEMS, SYSTEM_IDS, type SystemId, THAI_SURIYAYART_NOTE,
+} from './engine/systems'
 import { type Place, formatCoordinates, loadPlaces, searchPlaces } from './data/places'
 import { Layers } from './components/Layers'
 
 /**
- * Classes naming which axis diverges, so the marking points at the actual
- * disagreement rather than washing the whole row in accent.
+ * Classes naming what each axis did, so the marking points at the actual
+ * finding rather than washing the whole row in one ink.
  */
-function rowClasses(row: DivergenceRow): string {
+function rowClasses(row: ComparisonRow): string {
   return [
-    row.diverges ? 'diverges' : null,
     row.sign.verdict === 'diverge' ? 'sign-diverges' : null,
+    row.sign.verdict === 'converge' ? 'sign-converges' : null,
     row.house.verdict === 'diverge' ? 'house-diverges' : null,
+    row.house.verdict === 'converge' ? 'house-converges' : null,
   ].filter(Boolean).join(' ')
 }
 
-/** Short marginal note naming what diverges. The long form lives in the row. */
-function markerLabel(row: DivergenceRow): string {
-  const axes = [
-    row.sign.verdict === 'diverge' ? 'sign' : null,
-    row.house.verdict === 'diverge' ? 'house' : null,
-  ].filter(Boolean)
+/** Marginal note naming the finding on each axis. */
+function FindingMark({ row }: { row: ComparisonRow }) {
+  const marks: { key: string; kind: 'diverge' | 'converge'; text: string }[] = []
 
-  return axes.length ? axes.join(' + ') : ''
+  if (row.sign.verdict === 'diverge') marks.push({ key: 'sd', kind: 'diverge', text: 'sign differs' })
+  if (row.sign.verdict === 'converge') marks.push({ key: 'sc', kind: 'converge', text: 'sign agrees' })
+  if (row.house.verdict === 'diverge') marks.push({ key: 'hd', kind: 'diverge', text: 'house differs' })
+  if (row.house.verdict === 'converge') marks.push({ key: 'hc', kind: 'converge', text: 'house agrees' })
+
+  if (marks.length === 0) return <span className="mark-none">not compared</span>
+
+  return (
+    <span className="marks">
+      {marks.map((mark) => (
+        <span key={mark.key} className={`mark mark-${mark.kind}`}>{mark.text}</span>
+      ))}
+    </span>
+  )
 }
 
-function Why({ row }: { row: DivergenceRow }) {
+function Why({ row }: { row: ComparisonRow }) {
+  const associations = [...row.sign.associations, ...row.house.associations]
+
   return (
     <details className="why">
       <summary>Why</summary>
       <p>{row.sign.explanation}</p>
-      <p>{row.house.explanation}</p>
+      {row.house.explanation && <p>{row.house.explanation}</p>}
+
+      {associations.length > 0 && (
+        <div className="associations">
+          <p className="associations-head">
+            What each tradition associates with this placement, in its own terms
+          </p>
+          <dl>
+            {associations.map((association, index) => (
+              <div key={`${association.systemId}-${index}`}>
+                <dt>{association.systemName}</dt>
+                <dd>{association.text}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      )}
     </details>
   )
 }
 
-function ComparisonPlate({ divergence }: { divergence: Divergence }) {
+function SystemToggles({
+  selection, onChange, busy,
+}: {
+  selection: SystemId[]
+  onChange: (next: SystemId[]) => void
+  busy: boolean
+}) {
+  const toggle = (id: SystemId) => {
+    const next = selection.includes(id)
+      ? selection.filter((existing) => existing !== id)
+      : SYSTEM_IDS.filter((existing) => selection.includes(existing) || existing === id)
+    onChange(next)
+  }
+
+  // A comparison needs two systems. Two are currently implemented, so every
+  // one of them is required and none can be switched off. Saying that is
+  // better than presenting a control that silently refuses to move.
+  const allRequired = SYSTEM_IDS.length <= 2
+
+  return (
+    <fieldset className="toggles" disabled={busy}>
+      <legend>Systems compared</legend>
+      <div className="toggle-row">
+        {SYSTEM_IDS.map((id) => {
+          const checked = selection.includes(id)
+          // Never let the reader switch off the second-to-last system: with one
+          // system there is nothing to compare, and an empty table is a worse
+          // answer than a disabled checkbox.
+          const locked = checked && selection.length <= 2
+          return (
+            <label key={id} className={`toggle${checked ? ' on' : ''}`}>
+              <input
+                type="checkbox"
+                checked={checked}
+                disabled={locked}
+                onChange={() => toggle(id)}
+              />
+              <span className="toggle-name">{SYSTEMS[id].name}</span>
+              <span className="toggle-meta">
+                {SYSTEMS[id].zodiac === 'tropical' ? 'tropical' : SYSTEMS[id].ayanamsaName}
+                {' · '}
+                {SYSTEMS[id].houseSystem === 'placidus' ? 'Placidus' : 'whole sign'}
+              </span>
+            </label>
+          )
+        })}
+      </div>
+      {allRequired && (
+        <p className="toggle-note toggle-locked">
+          A comparison needs at least two systems, and two are implemented, so
+          both are in use. These become selectable when a third is added.
+        </p>
+      )}
+      <p className="toggle-note">{THAI_SURIYAYART_NOTE}</p>
+    </fieldset>
+  )
+}
+
+function ComparisonPlate({ comparison }: { comparison: Comparison }) {
+  const systems = comparison.systemIds
+
   return (
     <>
       {/* Wide viewports: a plate table, rows numbered and ruled. */}
       <div className="hidden md:block">
         <table className="plate">
           <caption>
-            Each row is one body read through both traditions. A marked row is one
-            where they disagree.
+            Each row is one body read through every selected tradition. Rows are
+            marked where they differ and where they agree.
           </caption>
           <thead>
             <tr>
@@ -60,38 +154,46 @@ function ComparisonPlate({ divergence }: { divergence: Divergence }) {
                 <span className="visually-hidden">Entry</span>
               </th>
               <th scope="col">Body</th>
-              <th scope="col">Western tropical · Placidus</th>
-              <th scope="col">Vedic sidereal · whole sign</th>
-              <th scope="col">Divergence</th>
+              {systems.map((id) => (
+                <th scope="col" key={id}>
+                  {SYSTEMS[id].name}
+                  <span className="col-sub">
+                    {SYSTEMS[id].houseSystem === 'placidus' ? 'Placidus' : 'whole sign'}
+                  </span>
+                </th>
+              ))}
+              <th scope="col">Finding</th>
             </tr>
           </thead>
           <tbody>
-            {divergence.rows.map((row, index) => (
-              <tr key={row.point} className={rowClasses(row) || undefined}>
-                <td className="col-index">{String(index + 1).padStart(2, '0')}</td>
-                <th scope="row" className="col-body">
-                  {row.label}
-                  {row.tropical.retrograde && <span className="retro"> ℞</span>}
-                </th>
-                <td>
-                  <span className="value-tropical">{row.tropical.formatted}</span>
-                  <span className="house">
-                    {row.tropical.house ? `House ${row.tropical.house}` : 'House undefined'}
-                  </span>
-                </td>
-                <td>
-                  <span className="value-sidereal">{row.sidereal.formatted}</span>
-                  <span className="house">
-                    {row.sidereal.house ? `House ${row.sidereal.house}` : 'House undefined'}
-                  </span>
-                </td>
-                <td>
-                  {row.diverges
-                    ? <span className="mark-note">{markerLabel(row)}</span>
-                    : <span className="mark-none">agree</span>}
-                  <Why row={row} />
-                </td>
-              </tr>
+            {comparison.rows.map((row, index) => (
+              // Two rows per body: the entry, then its note across the full
+              // width. Trapping the explanation in the narrow Finding column
+              // made it a ragged ribbon; as a footnote row it reads.
+              <Fragment key={row.point}>
+                <tr className={`${rowClasses(row)} entry-row`}>
+                  <td className="col-index">{String(index + 1).padStart(2, '0')}</td>
+                  <th scope="row" className="col-body">
+                    {row.label}
+                    {row.placements[0]?.placement?.retrograde && <span className="retro"> ℞</span>}
+                  </th>
+                  {row.placements.map(({ systemId, placement }) => (
+                    <td key={systemId}>
+                      <span className="value">{placement?.formatted ?? '—'}</span>
+                      <span className="house">
+                        {placement?.house ? `House ${placement.house}` : 'House undefined'}
+                      </span>
+                    </td>
+                  ))}
+                  <td><FindingMark row={row} /></td>
+                </tr>
+                <tr className={`${rowClasses(row)} note-row`}>
+                  <td className="col-index" />
+                  <td colSpan={systems.length + 2}>
+                    <Why row={row} />
+                  </td>
+                </tr>
+              </Fragment>
             ))}
           </tbody>
         </table>
@@ -99,39 +201,28 @@ function ComparisonPlate({ divergence }: { divergence: Divergence }) {
 
       {/* Narrow viewports: the same entries, stacked. Not a squeezed table. */}
       <ul className="entries md:hidden">
-        {divergence.rows.map((row, index) => (
-          <li key={row.point} className={`entry ${rowClasses(row)}`.trimEnd()}>
+        {comparison.rows.map((row, index) => (
+          <li key={row.point} className={`entry ${rowClasses(row)}`}>
             <div className="entry-head">
               <span className="entry-name">
                 {row.label}
-                {row.tropical.retrograde && <span className="retro"> ℞</span>}
+                {row.placements[0]?.placement?.retrograde && <span className="retro"> ℞</span>}
               </span>
-              <span className="entry-index">
-                {row.diverges
-                  ? <span className="mark-note">{markerLabel(row)}</span>
-                  : <span className="mark-none">agree</span>}
-              </span>
+              <FindingMark row={row} />
             </div>
 
             <div className="entry-frames">
-              <div className="entry-frame">
-                <span className="tag">Western</span>
-                <span>
-                  <span className="value">{row.tropical.formatted}</span>
-                  <span className="house">
-                    {row.tropical.house ? `House ${row.tropical.house}` : 'House undefined'}
+              {row.placements.map(({ systemId, placement }) => (
+                <div className="entry-frame" key={systemId}>
+                  <span className="tag">{SYSTEMS[systemId].shortName}</span>
+                  <span>
+                    <span className="value">{placement?.formatted ?? '—'}</span>
+                    <span className="house">
+                      {placement?.house ? `House ${placement.house}` : 'House undefined'}
+                    </span>
                   </span>
-                </span>
-              </div>
-              <div className="entry-frame">
-                <span className="tag">Vedic</span>
-                <span>
-                  <span className="value">{row.sidereal.formatted}</span>
-                  <span className="house">
-                    {row.sidereal.house ? `House ${row.sidereal.house}` : 'House undefined'}
-                  </span>
-                </span>
-              </div>
+                </div>
+              ))}
             </div>
 
             <Why row={row} />
@@ -151,13 +242,15 @@ export default function App() {
   const [date, setDate] = useState('')
   const [time, setTime] = useState('')
   const [timeKnown, setTimeKnown] = useState(true)
+  const [selection, setSelection] = useState<SystemId[]>(DEFAULT_SELECTION)
 
   const [chart, setChart] = useState<Chart | null>(null)
-  const [divergence, setDivergence] = useState<Divergence | null>(null)
+  const [comparison, setComparison] = useState<Comparison | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   const resultRef = useRef<HTMLElement>(null)
+  const lastBirth = useRef<BirthData | null>(null)
 
   useEffect(() => {
     loadPlaces().then(setPlaces).catch(() => {
@@ -167,58 +260,58 @@ export default function App() {
 
   const matches = place ? [] : searchPlaces(places, query)
 
-  async function submit(event: React.FormEvent) {
-    event.preventDefault()
-    setError(null)
-
-    if (!place) {
-      setError('Choose a birth place from the list.')
-      return
-    }
-    if (!date) {
-      setError('Enter a birth date.')
-      return
-    }
-    if (timeKnown && !time) {
-      setError('Enter a birth time, or say the time is unknown.')
-      return
-    }
-
-    const [year, month, day] = date.split('-').map(Number)
-    const [hour, minute] = (time || '12:00').split(':').map(Number)
-
-    const birth: BirthData = {
-      local: { year, month, day, hour, minute },
-      timeKnown,
-      latitude: place.latitude,
-      longitudeEast: place.longitudeEast,
-      zone: place.zone,
-    }
-
+  async function run(birth: BirthData, systems: SystemId[], moveFocus: boolean) {
     setBusy(true)
     try {
       // Loaded on demand. The ephemeris and its wasm glue are a third of the
-      // JavaScript on the page and nothing needs them until this moment, so
-      // they stay off the critical path entirely.
+      // JavaScript on the page and nothing needs them until this moment.
       const { computeChart } = await import('./engine/chart')
 
-      const computed = await computeChart(birth)
+      const computed = await computeChart(birth, systems)
       setChart(computed)
-      setDivergence(compareFrames(computed))
-      // Move focus, not just scroll, so the result is announced.
-      requestAnimationFrame(() => resultRef.current?.focus())
+      setComparison(compareFrames(computed))
+      lastBirth.current = birth
+      if (moveFocus) requestAnimationFrame(() => resultRef.current?.focus())
     } catch {
       setError('That chart could not be computed. Check the date and try again.')
       setChart(null)
-      setDivergence(null)
+      setComparison(null)
     } finally {
       setBusy(false)
     }
   }
 
+  async function submit(event: React.FormEvent) {
+    event.preventDefault()
+    setError(null)
+
+    if (!place) return setError('Choose a birth place from the list.')
+    if (!date) return setError('Enter a birth date.')
+    if (timeKnown && !time) {
+      return setError('Enter a birth time, or say the time is unknown.')
+    }
+
+    const [year, month, day] = date.split('-').map(Number)
+    const [hour, minute] = (time || '12:00').split(':').map(Number)
+
+    await run({
+      local: { year, month, day, hour, minute },
+      timeKnown,
+      latitude: place.latitude,
+      longitudeEast: place.longitudeEast,
+      zone: place.zone,
+    }, selection, true)
+  }
+
+  /** Changing the selection recomputes against only the chosen systems. */
+  function changeSelection(next: SystemId[]) {
+    setSelection(next)
+    if (lastBirth.current) void run(lastBirth.current, next, false)
+  }
+
   return (
     <>
-      <Layers ayanamsa={chart?.ayanamsa ?? 24} />
+      <Layers ayanamsa={comparison?.widestZodiacGap || 24} />
 
       <main className="shell">
         {/* 1 ----------------------------------------------------- masthead */}
@@ -228,17 +321,17 @@ export default function App() {
             Western and Vedic astrology read the same sky and frequently
             disagree about what it says. This shows <em>where</em>, and why.
           </p>
-          <p className="measure" style={{ marginTop: '2.5rem', fontSize: '0.9375rem', color: 'var(--color-ink-soft)' }}>
+          <p className="measure masthead-note">
             Everything is computed in your browser. No birth data is sent
             anywhere, stored, or logged.
           </p>
         </section>
 
         {/* 2 ------------------------------------------------------- record */}
-        <section id="record" style={{ paddingBlock: '4rem' }}>
+        <section id="record" className="band">
           <span className="plate-number">One — the record</span>
           <h2>Birth data</h2>
-          <p className="measure" style={{ marginTop: '1rem', marginBottom: '2.5rem', color: 'var(--color-ink-soft)' }}>
+          <p className="measure lede">
             Time is read as local time at the place of birth, and converted
             using the offset in force there on that date.
           </p>
@@ -313,58 +406,50 @@ export default function App() {
                   </ul>
                 )}
                 {place && (
-                  <span className="meta" style={{ display: 'block', marginTop: '0.375rem' }}>
+                  <span className="meta chosen">
                     {formatCoordinates(place.latitude, place.longitudeEast)} · {place.zone}
                   </span>
                 )}
               </div>
             </div>
 
-            <div style={{ marginTop: '2rem' }}>
+            <SystemToggles selection={selection} onChange={changeSelection} busy={busy} />
+
+            <div className="submit">
               <button type="submit" className="action" disabled={busy}>
                 {busy ? 'Computing' : 'Compare the frames'}
               </button>
             </div>
 
-            {error && (
-              <p role="alert" className="notice" style={{ marginTop: '1.5rem' }}>
-                {error}
-              </p>
-            )}
+            {error && <p role="alert" className="notice error">{error}</p>}
           </form>
         </section>
 
         {/* 3 ------------------------------------------------------- frames */}
-        <section id="frames" style={{ paddingBlock: '4rem' }}>
+        <section id="frames" className="band">
           <span className="plate-number">Two — the frames</span>
           <h2>Why they disagree</h2>
 
-          <p className="measure" style={{ marginTop: '1.25rem', marginBottom: '3rem' }}>
-            {FRAME_EXPLANATIONS.ayanamsa}
-          </p>
+          <p className="measure lede-wide">{FRAME_EXPLANATIONS.ayanamsa}</p>
 
           <hr className="rule" />
 
-          <div className="frames-grid" style={{ marginTop: '2.5rem' }}>
-            <div className="frame-card">
-              <h3>{FRAME_EXPLANATIONS.tropical.name}</h3>
-              <p className="sub">Zodiac</p>
-              <p>{FRAME_EXPLANATIONS.tropical.zodiac}</p>
-              <p className="sub">Houses — Placidus</p>
-              <p>{FRAME_EXPLANATIONS.tropical.houses}</p>
-            </div>
-            <div className="frame-card">
-              <h3>{FRAME_EXPLANATIONS.sidereal.name}</h3>
-              <p className="sub">Zodiac</p>
-              <p>{FRAME_EXPLANATIONS.sidereal.zodiac}</p>
-              <p className="sub">Houses — whole sign</p>
-              <p>{FRAME_EXPLANATIONS.sidereal.houses}</p>
-            </div>
+          <div className="frames-grid">
+            {SYSTEM_IDS.map((id) => (
+              <div className="frame-card" key={id}>
+                <h3>{SYSTEMS[id].name}</h3>
+                <p className="sub">Zodiac — {SYSTEMS[id].ayanamsaName ?? 'tropical'}</p>
+                <p>{SYSTEMS[id].zodiacNote}</p>
+                <p className="sub">
+                  Houses — {SYSTEMS[id].houseSystem === 'placidus' ? 'Placidus' : 'whole sign'}
+                </p>
+                <p>{SYSTEMS[id].houseNote}</p>
+              </div>
+            ))}
           </div>
 
-          <p className="measure" style={{ marginTop: '2.5rem', color: 'var(--color-ink-soft)' }}>
-            {FRAME_EXPLANATIONS.consequence}
-          </p>
+          <p className="measure consequence">{FRAME_EXPLANATIONS.consequence}</p>
+          <p className="measure consequence">{FRAME_EXPLANATIONS.convergence}</p>
         </section>
 
         {/* 4 --------------------------------------------------- comparison */}
@@ -373,53 +458,72 @@ export default function App() {
           ref={resultRef}
           tabIndex={-1}
           aria-live="polite"
-          style={{ paddingBlock: '4rem', outline: 'none' }}
+          className="band"
         >
           <span className="plate-number">Three — the comparison</span>
 
-          {!divergence && (
+          {!comparison && (
             <>
               <h2>The comparison</h2>
-              <p className="measure" style={{ marginTop: '1.25rem', color: 'var(--color-ink-soft)' }}>
-                Enter birth data above and the two readings appear here, side by
-                side, with every disagreement marked.
+              <p className="measure lede">
+                Enter birth data above and the readings appear here side by side,
+                with every difference and every agreement marked.
               </p>
             </>
           )}
 
-          {divergence && chart && (
+          {comparison && chart && (
             <>
-              <h2>Where they diverge</h2>
+              <h2>Where they meet and part</h2>
 
-              <p className="summary-line" style={{ marginTop: '1.5rem' }}>
-                <strong>{divergence.signDivergences} of {divergence.total}</strong>{' '}
+              <p className="summary-line">
+                <span className="count-diverge">
+                  {comparison.signDivergences} of {comparison.total}
+                </span>{' '}
                 placements fall in a different sign
-                {divergence.housesUndefined
-                  ? '.'
-                  : <>, and <strong>{divergence.houseDivergences}</strong> in a different house.</>}
+                {comparison.housesUndefined ? '. ' : <>
+                  {' '}and{' '}
+                  <span className="count-diverge">{comparison.houseDivergences}</span>{' '}
+                  in a different house.{' '}
+                </>}
+                <span className="count-converge">{comparison.signConvergences}</span>{' '}
+                agree on the sign
+                {!comparison.housesUndefined && <>
+                  {' '}and{' '}
+                  <span className="count-converge">{comparison.houseConvergences}</span>{' '}
+                  on the house
+                </>}.
               </p>
 
-              <p className="measure" style={{ marginTop: '1rem', color: 'var(--color-ink-soft)' }}>
-                The two zodiacs are {divergence.ayanamsaFormatted} apart for this
-                date, so a placement keeps its sign only in the final{' '}
-                {divergence.agreementWindowDegrees.toFixed(1)}° of a tropical sign.
+              <p className="measure gap-note">
+                The selected zodiacs begin{' '}
+                {comparison.ayanamsas.map((entry, index) => (
+                  <span key={entry.systemId}>
+                    {index > 0 && ', '}
+                    {entry.systemName} at {entry.degrees === 0
+                      ? 'the equinox'
+                      : `${entry.degrees.toFixed(2)}° behind it (${entry.label})`}
+                  </span>
+                ))}
+                . A placement keeps its sign across all of them only in the final{' '}
+                {comparison.signAgreementWindow.toFixed(1)}° of a tropical sign.
               </p>
 
               {chart.notes.length > 0 && (
-                <div style={{ marginTop: '2rem', display: 'grid', gap: '1rem' }}>
+                <div className="notes">
                   {chart.notes.map((note) => (
                     <p key={note} className="notice">{note}</p>
                   ))}
                 </div>
               )}
 
-              <hr className="rule rule-heavy" style={{ margin: '2.5rem 0 2rem' }} />
+              <hr className="rule rule-heavy" />
 
               <div className="plate-ground">
-                <ComparisonPlate divergence={divergence} />
+                <ComparisonPlate comparison={comparison} />
               </div>
 
-              <dl className="readout" style={{ marginTop: '2.5rem' }}>
+              <dl className="readout">
                 <div>
                   <dt>Universal time</dt>
                   <dd>{chart.utc.toISOString().replace('T', ' ').slice(0, 19)}</dd>
@@ -432,10 +536,14 @@ export default function App() {
                   <dt>Julian day</dt>
                   <dd>{chart.julianDay.toFixed(5)}</dd>
                 </div>
-                <div>
-                  <dt>Lahiri ayanamsa</dt>
-                  <dd>{divergence.ayanamsaFormatted}</dd>
-                </div>
+                {comparison.ayanamsas
+                  .filter((entry) => entry.degrees !== 0)
+                  .map((entry) => (
+                    <div key={entry.systemId}>
+                      <dt>{entry.label} ayanamsa</dt>
+                      <dd>{entry.degrees.toFixed(4)}°</dd>
+                    </div>
+                  ))}
               </dl>
             </>
           )}
@@ -443,14 +551,14 @@ export default function App() {
 
         {/* 5 ----------------------------------------------------- colophon */}
         <footer className="colophon">
-          <hr className="rule" style={{ marginBottom: '3rem' }} />
+          <hr className="rule" />
           <span className="plate-number">Four — colophon</span>
           <h2>What this is</h2>
 
           <p>
-            A comparison of two systems of astrology, shown through one set of
-            birth data. It reports where the systems agree and where they do
-            not, and explains the mechanism behind each disagreement.
+            A comparison of systems of astrology, shown through one set of birth
+            data. It reports where the systems agree and where they do not, and
+            explains the mechanism behind each.
           </p>
 
           <p>{FRAME_EXPLANATIONS.interpretive}</p>
@@ -463,10 +571,10 @@ export default function App() {
             page loads.
           </p>
 
-          <p style={{ color: 'var(--color-ink-faint)', fontSize: '0.8125rem' }}>
-            Positions from the Swiss Ephemeris. Sidereal longitudes use the
-            Lahiri ayanamsa. Western houses are Placidus, Vedic houses are whole
-            sign. Verified against published reference charts to under one
+          <p className="fineprint">
+            Positions from the Swiss Ephemeris, computed once in the tropical
+            frame and read through each system&rsquo;s own zodiac and house
+            rule. Verified against published reference charts to under one
             arcminute.
           </p>
         </footer>

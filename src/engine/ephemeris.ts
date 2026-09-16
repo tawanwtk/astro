@@ -26,7 +26,6 @@ export const BODY_LABEL: Record<Body, string> = {
 
 /** Swiss Ephemeris mode plus speed, so retrograde can be read off. */
 const CALC_FLAGS = 2 /* SEFLG_SWIEPH */ | 256 /* SEFLG_SPEED */
-const SE_SIDM_LAHIRI = 1
 
 /**
  * Placidus is undefined where a house cusp never rises. Swiss Ephemeris
@@ -64,7 +63,6 @@ export async function loadEphemeris(): Promise<SwissEph> {
     initPromise = (async () => {
       const swe = new SwissEph()
       await swe.initSwissEph()
-      swe.set_sid_mode(SE_SIDM_LAHIRI, 0, 0)
       instance = swe
       return swe
     })()
@@ -95,15 +93,24 @@ export function positionOf(swe: SwissEph, jd: number, body: Body): RawPosition {
 }
 
 /**
- * Lahiri ayanamsa for the instant, in degrees.
+ * Ayanamsa for the instant in a given sidereal mode, in degrees.
  *
- * Date-dependent and never hardcoded: roughly 22.2 degrees in 1879 and 24.2
- * today, drifting about 50 arcseconds a year with the precession of the
- * equinoxes. This single number is the entire difference between the two
- * traditions' longitudes.
+ * Date-dependent and never hardcoded: Lahiri is roughly 22.2 degrees in 1879
+ * and 24.2 today, drifting about 50 arcseconds a year with the precession of
+ * the equinoxes. For a system whose only difference from the tropical frame is
+ * its zodiac origin, this single number is that entire difference.
+ *
+ * The mode must be set immediately before reading, because the library keeps
+ * it as global state.
  */
-export function ayanamsaAt(swe: SwissEph, jd: number): number {
+export function ayanamsaFor(swe: SwissEph, jd: number, sidMode: number): number {
+  swe.set_sid_mode(sidMode, 0, 0)
   return swe.get_ayanamsa_ut(jd)
+}
+
+/** Lahiri, the Vedic default. Kept for the tests that check it by name. */
+export function ayanamsaAt(swe: SwissEph, jd: number): number {
+  return ayanamsaFor(swe, jd, 1)
 }
 
 /** Tropical Placidus cusps, ascendant and midheaven. */

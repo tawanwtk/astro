@@ -5,7 +5,7 @@
  * The tests assert these same values -- this exists so the comparison can be
  * read rather than merely passed. Run with `npm run verify`.
  */
-import { computeChart } from './chart'
+import { computeChart, placementOf } from './chart'
 import { BODIES, BODY_LABEL } from './ephemeris'
 import { angularSeparation, formatLongitude, signOf } from './signs'
 import {
@@ -49,7 +49,7 @@ async function main() {
     )
     console.log(
       `  JD ${chart.julianDay.toFixed(6)}   `
-      + `Lahiri ayanamsa ${chart.ayanamsa.toFixed(4)} deg`,
+      + `Lahiri ayanamsa ${chart.systems.vedic.ayanamsa.toFixed(4)} deg`,
     )
 
     const utcOk = chart.utc.toISOString() === reference.expectedUtcIso
@@ -58,7 +58,9 @@ async function main() {
       console.log(`  FAIL UTC expected ${reference.expectedUtcIso}`)
     }
 
-    const ascendant = chart.tropical.ascendant!
+    const western = chart.systems.western
+    const vedic = chart.systems.vedic
+    const ascendant = western.ascendant!
     const expectedAsc = reference.tropical.ascendant!
     const ascExpected = signOf(ascendant.longitude) * 30 + expectedAsc.degreeInSign
     const ascLine = row('Ascendant', ascExpected, ascendant.longitude, ASCENDANT_TOLERANCE)
@@ -66,7 +68,7 @@ async function main() {
     console.log(ascLine)
 
     for (const body of BODIES) {
-      const placement = chart.tropical.placements.find((p) => p.point === body)!
+      const placement = placementOf(western, body)!
       const expected = reference.tropical[body]
       const expectedLongitude = signOf(placement.longitude) * 30 + expected.degreeInSign
       const line = row(
@@ -77,14 +79,14 @@ async function main() {
     }
 
     console.log('\n  Derived sidereal frame (tropical minus ayanamsa, whole sign houses):')
-    const siderealAsc = chart.sidereal.ascendant!
+    const siderealAsc = vedic.ascendant!
     console.log(
       `       ${pad('Ascendant', 12)} `
       + `${pad(ascendant.formatted, 22)} -> ${siderealAsc.formatted}`,
     )
     for (const body of BODIES) {
-      const tropical = chart.tropical.placements.find((p) => p.point === body)!
-      const sidereal = chart.sidereal.placements.find((p) => p.point === body)!
+      const tropical = placementOf(western, body)!
+      const sidereal = placementOf(vedic, body)!
       const signShift = tropical.signName !== sidereal.signName ? '  sign shift' : ''
       const houseShift = tropical.house !== sidereal.house
         ? `  house ${tropical.house} -> ${sidereal.house}`
@@ -116,12 +118,12 @@ async function main() {
       manualOffsetMinutes: 0,
     })
 
-    const delta = Math.abs(chart.ayanamsa - expectedDegrees)
+    const delta = Math.abs(chart.systems.vedic.ayanamsa - expectedDegrees)
     const status = delta <= AYANAMSA_TOLERANCE ? 'ok  ' : 'FAIL'
     if (status === 'FAIL') failures++
     console.log(
       `  ${status} ${utcIso}  expected ${expectedDegrees.toFixed(5)} deg  `
-      + `actual ${chart.ayanamsa.toFixed(5)} deg  `
+      + `actual ${chart.systems.vedic.ayanamsa.toFixed(5)} deg  `
       + `delta ${(delta * 3600).toFixed(1)} arcsec`,
     )
   }

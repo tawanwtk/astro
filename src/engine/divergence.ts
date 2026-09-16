@@ -1,328 +1,394 @@
 /**
- * Where the two traditions disagree, and why.
+ * Where the selected traditions disagree, and where they agree.
  *
- * This is the product. Not the placements -- the gap between them.
+ * This is the product. Not the placements -- the relationship between them.
  *
- * There are exactly two independent ways a row can diverge, and they have
- * different causes, so they are computed and explained separately:
+ * Two findings, not a finding and a failure:
  *
- *   Sign   -- caused by the ayanamsa. The two frames disagree about where the
- *             zodiac starts, so the same longitude falls in different signs.
+ *   Divergence  -- the systems place a body differently. Interesting because
+ *                  it exposes the assumptions each system is built on.
+ *   Convergence -- the systems place it identically. The stronger signal,
+ *                  because frames built on different foundations landed in the
+ *                  same place anyway.
  *
- *   House  -- caused mainly by the house system, Placidus against whole sign,
- *             and only sometimes by the ayanamsa as well. This distinction is
- *             the non-obvious part and is worked out below.
+ * Neither is a pass or a fail. Both are results.
  *
- * Everything here describes systems. Nothing here describes a person, predicts
+ * Each is computed on two independent axes, which have different causes:
+ *
+ *   Sign   -- driven by the ayanamsa, the systems' differing zodiac origins.
+ *   House  -- driven mainly by the house system, Placidus against whole sign,
+ *             and only sometimes by the ayanamsa as well.
+ *
+ * Everything here describes systems. Nothing describes a person, predicts
  * anything, or offers advice.
  */
-import type { Chart, Placement, PointId } from './chart'
-import { formatDegrees, norm360, signOf } from './signs'
+// Type-only: importing a value from chart.ts here would pull the ephemeris
+// and its wasm glue back onto the critical path, undoing the dynamic import
+// in App.tsx. The one helper needed is three lines, so it lives here.
+import type { Chart, Placement, PointId, SystemResult } from './chart'
 
-export type Verdict = 'agree' | 'diverge' | 'undefined'
+import { type Association, houseAssociations, signAssociations } from './associations'
+import { formatDegrees, norm360, signOf } from './signs'
+import { type SystemId, SYSTEMS } from './systems'
+
+/** Pull one point out of a system result. */
+function placementOf(result: SystemResult, point: PointId): Placement | null {
+  if (point === 'ascendant') return result.ascendant
+  return result.placements.find((placement) => placement.point === point) ?? null
+}
+
+export type Verdict = 'converge' | 'diverge' | 'undefined'
 
 export type HouseCause =
-  /** The two house systems carve the same sky differently. */
+  /** The house systems carve the same sky differently. */
   | 'house-system'
   /**
-   * The ayanamsa moved the body and the Ascendant by different numbers of
-   * signs, so the whole sign count starts from a different place.
+   * The ayanamsa moved a body and the Ascendant by different numbers of signs,
+   * so the whole sign count starts from a different place.
    */
   | 'ayanamsa-and-house-system'
 
-export interface SignComparison {
-  verdict: Exclude<Verdict, 'undefined'>
-  /** How many signs the sidereal placement sits behind the tropical one. */
-  signsBack: number
-  explanation: string
-}
-
-export interface HouseComparison {
+export interface AxisComparison {
   verdict: Verdict
-  cause: HouseCause | null
+  /** How many distinct values the selected systems produced. */
+  distinctValues: number
   explanation: string
+  /** Present only when the systems converge. */
+  associations: Association[]
 }
 
-export interface DivergenceRow {
+export interface SignComparison extends AxisComparison {
+  /** The agreed sign name, when they converge. */
+  convergedSign: string | null
+}
+
+export interface HouseComparison extends AxisComparison {
+  convergedHouse: number | null
+  cause: HouseCause | null
+}
+
+export interface ComparisonRow {
   point: PointId
   label: string
-  tropical: Placement
-  sidereal: Placement
+  /** Placement per system, in selection order. Null where undefined. */
+  placements: { systemId: SystemId; systemName: string; placement: Placement | null }[]
   sign: SignComparison
   house: HouseComparison
-  /** True when either axis disagrees. Drives the marker in the table. */
+  /** True when either axis disagrees. */
   diverges: boolean
+  /** True when either axis agrees across every selected system. */
+  converges: boolean
 }
 
-export interface Divergence {
-  rows: DivergenceRow[]
-  ayanamsa: number
-  /** e.g. `24°13'13"`. */
-  ayanamsaFormatted: string
+export interface Comparison {
+  rows: ComparisonRow[]
+  systemIds: SystemId[]
+  /** Ayanamsa per system, degrees. Zero for a tropical zodiac. */
+  ayanamsas: { systemId: SystemId; systemName: string; degrees: number; label: string }[]
+  /** Largest gap between any two selected zodiac origins, degrees. */
+  widestZodiacGap: number
   /**
-   * The width of the window in which the two traditions agree about the sign.
+   * The width of the window in which every selected system agrees on a sign.
    *
-   * A body keeps its sign only if it sits further into that sign than the
-   * ayanamsa -- that is, in the final `30 - ayanamsa` degrees. Today that
-   * window is under six degrees wide, which is why agreement is the rare case
-   * and disagreement the norm.
+   * A placement keeps its sign across systems only if it sits further into
+   * that sign than the widest gap between their zodiac origins. With Western
+   * and Vedic selected that window is under six degrees, which is why sign
+   * agreement is the rarer result.
    */
-  agreementWindowDegrees: number
+  signAgreementWindow: number
   signDivergences: number
+  signConvergences: number
   houseDivergences: number
-  /** Rows compared. */
+  houseConvergences: number
   total: number
   /** True when houses could not be compared at all. */
   housesUndefined: boolean
+  /** True when fewer than two systems are selected, so nothing can be compared. */
+  tooFewSystems: boolean
 }
 
-/** Ordinal for prose: 1 -> "first". */
 const ORDINALS = [
   'first', 'second', 'third', 'fourth', 'fifth', 'sixth',
   'seventh', 'eighth', 'ninth', 'tenth', 'eleventh', 'twelfth',
 ]
+const ordinal = (house: number) => ORDINALS[house - 1] ?? String(house)
 
-function ordinal(house: number): string {
-  return ORDINALS[house - 1] ?? String(house)
+/** Join names as "A and B" or "A, B and C". */
+function list(names: string[]): string {
+  if (names.length <= 1) return names[0] ?? ''
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+}
+
+function systemNameMap(systemIds: SystemId[]): Record<string, string> {
+  return Object.fromEntries(systemIds.map((id) => [id, SYSTEMS[id].name]))
 }
 
 function compareSign(
-  tropical: Placement,
-  sidereal: Placement,
-  ayanamsaFormatted: string,
-  agreementWindowDegrees: number,
+  entries: { systemId: SystemId; placement: Placement }[],
+  systemIds: SystemId[],
+  widestZodiacGap: number,
+  signAgreementWindow: number,
 ): SignComparison {
-  const signsBack = norm360(signOf(tropical.longitude) * 30 - signOf(sidereal.longitude) * 30) / 30
+  const names = systemNameMap(systemIds)
+  const distinct = new Set(entries.map((entry) => entry.placement.sign))
 
-  if (signsBack === 0) {
+  if (distinct.size === 1) {
+    const sign = entries[0].placement.sign
+    const signName = entries[0].placement.signName
+    const deepest = Math.max(...entries.map((entry) => entry.placement.degreeInSign))
+
     return {
-      verdict: 'agree',
-      signsBack: 0,
+      verdict: 'converge',
+      distinctValues: 1,
+      convergedSign: signName,
+      associations: signAssociations(sign, systemIds, names),
       explanation:
-        `Both traditions read this as ${tropical.signName}. That is the less `
-        + `common outcome: it holds only for a position in the last `
-        + `${formatDegrees(agreementWindowDegrees)} of a tropical sign, where `
-        + `subtracting the ayanamsa of ${ayanamsaFormatted} is not enough to `
-        + `cross the boundary. Here the position is `
-        + `${formatDegrees(tropical.degreeInSign)} into ${tropical.signName}, `
-        + `which clears it.`,
+        `${list(entries.map((entry) => SYSTEMS[entry.systemId].name))} all place `
+        + `this in ${signName}. Their zodiacs begin up to `
+        + `${formatDegrees(widestZodiacGap)} apart, so agreement here is not `
+        + `automatic: it holds because the placement sits far enough into the `
+        + `sign -- at most ${formatDegrees(deepest)} in -- that the offset `
+        + `between the zodiacs does not carry it over a boundary. Only the `
+        + `final ${formatDegrees(signAgreementWindow)} of a sign does that.`,
     }
   }
 
+  const readings = entries
+    .map((entry) => `${SYSTEMS[entry.systemId].shortName} reads `
+      + `${entry.placement.signName} ${formatDegrees(entry.placement.degreeInSign)}`)
+    .join('; ')
+
   return {
     verdict: 'diverge',
-    signsBack,
+    distinctValues: distinct.size,
+    convergedSign: null,
+    associations: [],
     explanation:
-      `Western tropical reads ${tropical.signName} `
-      + `${formatDegrees(tropical.degreeInSign)}. Vedic sidereal measures from `
-      + `a zodiac that starts ${ayanamsaFormatted} earlier, which puts the same `
-      + `longitude at ${sidereal.signName} `
-      + `${formatDegrees(sidereal.degreeInSign)}. The position has not moved. `
-      + `The two traditions are counting from different starting points.`,
+      `${readings}. The position has not moved. The systems measure from `
+      + `zodiac origins up to ${formatDegrees(widestZodiacGap)} apart, so the `
+      + `same longitude falls in different signs.`,
   }
+}
+
+function houseCause(
+  entries: { systemId: SystemId; placement: Placement }[],
+  chart: Chart,
+): HouseCause {
+  // Whole sign counts signs from the Ascendant's sign, so when the ayanamsa
+  // shifts a body and the Ascendant by the same number of signs it cancels out
+  // of the count entirely. Work out whether it actually contributed here.
+  const offsets = new Set<number>()
+
+  for (const entry of entries) {
+    const result = chart.systems[entry.systemId]
+    const ascendant = result.ascendant
+    if (!ascendant) continue
+    offsets.add(
+      norm360(signOf(entry.placement.longitude) * 30 - signOf(ascendant.longitude) * 30) / 30,
+    )
+  }
+
+  return offsets.size > 1 ? 'ayanamsa-and-house-system' : 'house-system'
 }
 
 function compareHouse(
-  tropical: Placement,
-  sidereal: Placement,
-  tropicalAscendant: Placement | null,
-  siderealAscendant: Placement | null,
-  placidusDefined: boolean,
-  timeKnown: boolean,
+  point: PointId,
+  entries: { systemId: SystemId; placement: Placement }[],
+  systemIds: SystemId[],
+  chart: Chart,
 ): HouseComparison {
-  if (!timeKnown) {
+  const names = systemNameMap(systemIds)
+  const base = { convergedHouse: null, cause: null, associations: [] as Association[] }
+
+  if (!chart.timeKnown) {
     return {
+      ...base,
       verdict: 'undefined',
-      cause: null,
+      distinctValues: 0,
       explanation:
         'Houses depend on the exact time and place of birth. Without a birth '
-        + 'time neither tradition can place this, so neither is shown.',
+        + 'time no tradition can place this, so none is shown.',
     }
   }
 
-  if (!placidusDefined || tropical.house === null) {
+  if (point === 'ascendant') {
     return {
+      ...base,
+      verdict: 'converge',
+      distinctValues: 1,
+      convergedHouse: 1,
+      associations: houseAssociations(1, systemIds, names),
+      explanation:
+        'The Ascendant begins the first house in every one of these '
+        + 'traditions, so the house cannot differ. The sign can, and when it '
+        + 'does, every whole sign house shifts with it.',
+    }
+  }
+
+  const known = entries.filter((entry) => entry.placement.house !== null)
+  if (known.length < entries.length || known.length < 2) {
+    const survivors = known
+      .map((entry) => `${SYSTEMS[entry.systemId].shortName} places it in the `
+        + `${ordinal(entry.placement.house!)}`)
+      .join('; ')
+
+    return {
+      ...base,
       verdict: 'undefined',
-      cause: null,
+      distinctValues: known.length,
       explanation:
         'Placidus house cusps are undefined at this latitude, so there is no '
-        + 'Western house placement to compare. The Vedic whole sign house is '
-        + `the ${ordinal(sidereal.house!)}; whole sign does not depend on `
-        + 'latitude, so it survives where Placidus does not.',
+        + 'Western house to compare. '
+        + (survivors
+          ? `${survivors}. Whole sign does not depend on latitude, so it `
+            + 'survives where Placidus does not.'
+          : ''),
     }
   }
 
-  if (!tropicalAscendant || !siderealAscendant || sidereal.house === null) {
-    return { verdict: 'undefined', cause: null, explanation: 'Houses unavailable.' }
-  }
+  const distinct = new Set(known.map((entry) => entry.placement.house))
 
-  // Whole sign counts signs from the Ascendant's sign. Placidus counts unequal
-  // arcs from the Ascendant's exact degree. If the ayanamsa shifts the body
-  // and the Ascendant by the same number of signs, the shift cancels out of
-  // the whole sign count entirely -- which is why most house divergence is not
-  // the ayanamsa's doing at all.
-  const tropicalSignOffset =
-    norm360(signOf(tropical.longitude) * 30 - signOf(tropicalAscendant.longitude) * 30) / 30
-  const siderealSignOffset =
-    norm360(signOf(sidereal.longitude) * 30 - signOf(siderealAscendant.longitude) * 30) / 30
-  const ayanamsaContributed = tropicalSignOffset !== siderealSignOffset
-
-  if (tropical.house === sidereal.house) {
+  if (distinct.size === 1) {
+    const house = known[0].placement.house!
     return {
-      verdict: 'agree',
+      verdict: 'converge',
+      distinctValues: 1,
+      convergedHouse: house,
+      associations: houseAssociations(house, systemIds, names),
       cause: null,
       explanation:
-        `Both traditions place this in the ${ordinal(tropical.house)} house, `
-        + 'though they draw its boundaries differently: Placidus divides the '
-        + 'sky by unequal arcs that depend on the time and latitude of birth, '
-        + 'whole sign gives each house one entire sign. The agreement is real '
-        + 'but it is arrived at two different ways.',
+        `${list(known.map((entry) => SYSTEMS[entry.systemId].name))} all place `
+        + `this in the ${ordinal(house)} house, having drawn its boundaries `
+        + `two different ways -- Placidus by unequal arcs that depend on the `
+        + `time and latitude of birth, whole sign by giving each house one `
+        + `entire sign. The agreement is arrived at independently.`,
     }
   }
 
-  if (ayanamsaContributed) {
-    return {
-      verdict: 'diverge',
-      cause: 'ayanamsa-and-house-system',
-      explanation:
-        `Western Placidus places this in the ${ordinal(tropical.house)} house, `
-        + `Vedic whole sign in the ${ordinal(sidereal.house)}. Two causes `
-        + 'compound here. The house systems differ, and the ayanamsa moved '
-        + 'this body and the Ascendant across a different number of sign '
-        + 'boundaries, so the whole sign count starts from a different place. '
-        + 'Usually that second effect cancels out. Here it does not.',
-    }
-  }
+  const cause = houseCause(known, chart)
+  const readings = known
+    .map((entry) => `${SYSTEMS[entry.systemId].shortName} the `
+      + `${ordinal(entry.placement.house!)}`)
+    .join(', ')
 
   return {
+    ...base,
     verdict: 'diverge',
-    cause: 'house-system',
-    explanation:
-      `Western Placidus places this in the ${ordinal(tropical.house)} house, `
-      + `Vedic whole sign in the ${ordinal(sidereal.house)}. This is not the `
-      + 'ayanamsa: it shifted this body and the Ascendant by the same number '
-      + 'of signs, so it cancels out of the whole sign count. The difference '
-      + 'is the house system alone. Placidus cuts unequal arcs that depend on '
-      + 'the time and latitude of birth, so a body near a cusp can fall either '
-      + 'side of it; whole sign assigns each house one entire sign, so only '
-      + 'the sign matters.',
+    distinctValues: distinct.size,
+    cause,
+    explanation: cause === 'ayanamsa-and-house-system'
+      ? `${readings}. Two causes compound here. The house systems differ, and `
+        + 'the ayanamsa moved this body and the Ascendant across a different '
+        + 'number of sign boundaries, so the whole sign count starts from a '
+        + 'different place. Usually that second effect cancels out. Here it '
+        + 'does not.'
+      : `${readings}. This is not the ayanamsa: it shifted this body and the `
+        + 'Ascendant by the same number of signs, so it cancels out of the '
+        + 'whole sign count. The difference is the house system alone. '
+        + 'Placidus cuts unequal arcs that depend on the time and latitude of '
+        + 'birth, so a body near a cusp can fall either side of it; whole sign '
+        + 'assigns each house one entire sign, so only the sign matters.',
   }
 }
 
-/** Compare the two frames of a computed chart, row by row. */
-export function compareFrames(chart: Chart): Divergence {
-  const ayanamsaFormatted = formatDegrees(chart.ayanamsa)
-  const agreementWindowDegrees = 30 - chart.ayanamsa
+/** Compare the selected systems of a computed chart, row by row. */
+export function compareFrames(chart: Chart): Comparison {
+  const systemIds = chart.systemIds
+  const results = systemIds.map((id) => chart.systems[id]).filter(Boolean) as SystemResult[]
+
+  const ayanamsas = systemIds.map((id) => ({
+    systemId: id,
+    systemName: SYSTEMS[id].name,
+    degrees: chart.systems[id].ayanamsa,
+    label: SYSTEMS[id].ayanamsaName ?? 'tropical',
+  }))
+
+  const origins = ayanamsas.map((entry) => entry.degrees)
+  const widestZodiacGap = origins.length > 1
+    ? Math.max(...origins) - Math.min(...origins)
+    : 0
+  const signAgreementWindow = 30 - widestZodiacGap
+
+  const tooFewSystems = systemIds.length < 2
 
   const points: PointId[] = [
-    ...(chart.tropical.ascendant ? (['ascendant'] as PointId[]) : []),
-    ...chart.tropical.placements.map((placement) => placement.point),
+    ...(results[0]?.ascendant ? (['ascendant'] as PointId[]) : []),
+    ...(results[0]?.placements.map((placement) => placement.point) ?? []),
   ]
 
-  const rows: DivergenceRow[] = []
+  const rows: ComparisonRow[] = []
 
   for (const point of points) {
-    const tropical = point === 'ascendant'
-      ? chart.tropical.ascendant
-      : chart.tropical.placements.find((placement) => placement.point === point)
-    const sidereal = point === 'ascendant'
-      ? chart.sidereal.ascendant
-      : chart.sidereal.placements.find((placement) => placement.point === point)
+    const entries = systemIds
+      .map((systemId) => ({ systemId, placement: placementOf(chart.systems[systemId], point) }))
+      .filter((entry): entry is { systemId: SystemId; placement: Placement } =>
+        entry.placement !== null)
 
-    if (!tropical || !sidereal) continue
+    if (entries.length === 0) continue
 
-    const sign = compareSign(tropical, sidereal, ayanamsaFormatted, agreementWindowDegrees)
-
-    // The Ascendant is the first house in both traditions by definition, so
-    // there is no house comparison to make. Its sign divergence is the
-    // consequential one: it is what the entire Vedic house frame is built on.
-    const house: HouseComparison = point === 'ascendant'
-      ? {
-        verdict: chart.timeKnown ? 'agree' : 'undefined',
-        cause: null,
-        explanation: chart.timeKnown
-          ? 'The Ascendant begins the first house in both traditions, so the '
-          + 'house cannot differ. The sign can, and when it does every Vedic '
-          + 'whole sign house shifts with it -- one ayanamsa subtraction '
-          + 'rearranges the entire Vedic chart.'
-          : 'Without a birth time there is no Ascendant.',
-      }
-      : compareHouse(
-        tropical, sidereal,
-        chart.tropical.ascendant, chart.sidereal.ascendant,
-        chart.placidusDefined, chart.timeKnown,
-      )
+    const sign = compareSign(entries, systemIds, widestZodiacGap, signAgreementWindow)
+    const house = compareHouse(point, entries, systemIds, chart)
 
     rows.push({
       point,
-      label: tropical.label,
-      tropical,
-      sidereal,
+      label: entries[0].placement.label,
+      placements: systemIds.map((systemId) => ({
+        systemId,
+        systemName: SYSTEMS[systemId].name,
+        placement: placementOf(chart.systems[systemId], point),
+      })),
       sign,
       house,
       diverges: sign.verdict === 'diverge' || house.verdict === 'diverge',
+      converges: sign.verdict === 'converge' || house.verdict === 'converge',
     })
   }
 
+  const count = (axis: 'sign' | 'house', verdict: Verdict) =>
+    rows.filter((row) => row[axis].verdict === verdict).length
+
   return {
     rows,
-    ayanamsa: chart.ayanamsa,
-    ayanamsaFormatted,
-    agreementWindowDegrees,
-    signDivergences: rows.filter((row) => row.sign.verdict === 'diverge').length,
-    houseDivergences: rows.filter((row) => row.house.verdict === 'diverge').length,
+    systemIds,
+    ayanamsas,
+    widestZodiacGap,
+    signAgreementWindow,
+    signDivergences: count('sign', 'diverge'),
+    signConvergences: count('sign', 'converge'),
+    houseDivergences: count('house', 'diverge'),
+    houseConvergences: count('house', 'converge'),
     total: rows.length,
     housesUndefined: rows.every((row) => row.house.verdict === 'undefined'),
+    tooFewSystems,
   }
 }
 
 /**
- * The standing explanation of why the two traditions differ, independent of
- * any chart. Shown before results, so the comparison is legible when it
- * arrives rather than surprising.
+ * The standing explanation of why the systems differ, independent of any
+ * chart. Shown before results, so the comparison is legible when it arrives.
  */
 export const FRAME_EXPLANATIONS = {
-  tropical: {
-    name: 'Western tropical',
-    zodiac:
-      'The tropical zodiac is tied to the seasons. Zero degrees Aries is '
-      + 'defined as the March equinox -- the moment the Sun crosses the '
-      + 'celestial equator going north. The zodiac is anchored to the '
-      + "Earth's relationship with the Sun, not to the stars.",
-    houses:
-      'Placidus divides the sky by unequal arcs, based on the time it takes '
-      + 'each degree of the ecliptic to rise. House sizes depend on the exact '
-      + 'time and the latitude of birth, and the system breaks down entirely '
-      + 'near the poles, where some degrees never rise at all.',
-  },
-  sidereal: {
-    name: 'Vedic sidereal',
-    zodiac:
-      'The sidereal zodiac is tied to the stars. It keeps zero degrees Aries '
-      + 'fixed against a stellar reference rather than against the equinox. '
-      + 'Since the two definitions coincided, they have drifted apart.',
-    houses:
-      'Whole sign gives each house one entire sign. The sign rising at birth '
-      + 'is the whole of the first house, the next sign the second, and so on. '
-      + 'House boundaries and sign boundaries are the same thing, so latitude '
-      + 'does not enter into it.',
-  },
   ayanamsa:
-    "The gap between the two zodiacs is the ayanamsa. It exists because the "
+    "The gap between two zodiacs is the ayanamsa. It exists because the "
     + "Earth's axis wobbles, completing one slow circle roughly every 25,800 "
     + 'years. The equinox drifts backwards through the constellations at about '
-    + '50 arcseconds a year -- one degree every seventy-two years. The two '
-    + 'zodiacs last agreed somewhere around the fifth century. They are now '
-    + 'about twenty-four degrees apart, which is most of a sign.',
+    + '50 arcseconds a year -- one degree every seventy-two years. The tropical '
+    + 'and sidereal zodiacs last agreed somewhere around the fifth century. '
+    + 'They are now about twenty-four degrees apart, which is most of a sign.',
   consequence:
     'Because the ayanamsa is nearly the width of a sign, most placements land '
     + 'in a different sign in the two traditions. A position keeps its sign '
     + 'only when it sits in the final few degrees of a tropical sign. Neither '
     + 'tradition has made an arithmetic error. They are measuring the same sky '
     + 'from two different starting points, and each is internally consistent.',
+  convergence:
+    'Where the systems agree, they have arrived at the same answer from '
+    + 'different foundations -- a different zodiac origin, a different rule for '
+    + 'dividing the sky. That is the rarer result and the stronger one. It is '
+    + 'not a verdict about anything; it is a statement about the systems.',
   interpretive:
     'Both systems are interpretive frameworks with long histories of practice. '
     + 'Neither is evidence-based, and this tool takes no position on what any '
-    + 'placement means. It shows where the two frameworks describe the same '
-    + 'sky differently.',
+    + 'placement means. It shows where the frameworks describe the same sky '
+    + 'differently, and where they do not.',
 } as const

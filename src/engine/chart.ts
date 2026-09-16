@@ -1,19 +1,22 @@
 /**
  * The single computation.
  *
- * Positions are computed once, in the tropical frame. Both traditions read
- * from that one computation:
+ * Positions are computed once, in the tropical frame. Every system reads from
+ * that one computation:
  *
- *   Western tropical  -- the longitude, used directly.
- *   Vedic sidereal    -- the same longitude minus the ayanamsa.
+ *   tropical zodiac  -- the longitude, used directly.
+ *   sidereal zodiac  -- the same longitude minus that system's ayanamsa.
  *
- * Nothing is computed twice. If the two frames ever disagree about something
- * that is not the ayanamsa or the house system, that is a bug in this file and
- * not a difference between the traditions.
+ * Nothing is computed twice. If two systems ever disagree about something that
+ * is not an ayanamsa or a house-system difference, that is a bug in this file
+ * and not a difference between the traditions.
+ *
+ * A tradition that computes its own positions rather than reinterpreting these
+ * does not belong here -- see THAI_SURIYAYART_NOTE in systems.ts.
  */
 import {
   type Body, BODIES, BODY_LABEL, type RawHouses,
-  ayanamsaAt, julianDay, loadEphemeris, placidusHouses, placidusIsDefined,
+  ayanamsaFor, julianDay, loadEphemeris, placidusHouses, placidusIsDefined,
   positionOf,
 } from './ephemeris'
 import {
@@ -24,9 +27,11 @@ import {
   type LocalDateTime, type ResolvedOffset,
   manualOffset, resolveOffset, toUtc,
 } from './time'
+import {
+  DEFAULT_SELECTION, type HouseSystem, type SystemDefinition, type SystemId,
+  SYSTEMS,
+} from './systems'
 
-export type Frame = 'tropical' | 'sidereal'
-export type HouseSystem = 'placidus' | 'whole-sign'
 export type PointId = Body | 'ascendant'
 
 export interface BirthData {
@@ -50,12 +55,12 @@ export interface BirthData {
 export interface Placement {
   point: PointId
   label: string
-  /** Ecliptic longitude in this frame, degrees. */
+  /** Ecliptic longitude in this system's zodiac, degrees. */
   longitude: number
   sign: SignIndex
   signName: SignName
   degreeInSign: number
-  /** e.g. Pisces 23 degrees 30 minutes, pre-formatted for display. */
+  /** Pre-formatted for display. */
   formatted: string
   /** Display property, not a position error. Never true for the Ascendant. */
   retrograde: boolean
@@ -63,13 +68,15 @@ export interface Placement {
   house: number | null
 }
 
-export interface FrameResult {
-  frame: Frame
+export interface SystemResult {
+  system: SystemDefinition
   houseSystem: HouseSystem
+  /** Degrees subtracted from the tropical frame. Zero for a tropical zodiac. */
+  ayanamsa: number
   placements: Placement[]
   /** Null when the birth time is unknown. */
   ascendant: Placement | null
-  /** Twelve cusp longitudes in this frame, or null when unavailable. */
+  /** Twelve cusp longitudes in this zodiac, or null when unavailable. */
   cusps: number[] | null
 }
 
@@ -78,19 +85,18 @@ export interface Chart {
   offset: ResolvedOffset
   utc: Date
   julianDay: number
-  /** Lahiri ayanamsa for the instant, degrees. The whole difference in one number. */
-  ayanamsa: number
   timeKnown: boolean
   /** False above the polar circles, where Placidus cusps are undefined. */
   placidusDefined: boolean
-  tropical: FrameResult
-  sidereal: FrameResult
+  /** Which systems were computed, in selection order. */
+  systemIds: SystemId[]
+  systems: Record<string, SystemResult>
   /** Honest caveats for the reader: LMT conversion, unknown time, polar latitude. */
   notes: string[]
 }
 
 /**
- * House containing a longitude, given twelve cusps in the same frame.
+ * House containing a longitude, given twelve cusps in the same zodiac.
  *
  * Cusps are in ascending zodiacal order but wrap through 0 degrees, and
  * Placidus houses are unequal, so this walks the intervals rather than
@@ -150,24 +156,22 @@ function makePlacement(
   }
 }
 
-function buildFrame(
-  frame: Frame,
-  houseSystem: HouseSystem,
+function buildSystem(
+  system: SystemDefinition,
   /** Tropical longitudes and speeds, straight from the one computation. */
   tropicalPositions: Map<Body, { longitude: number; speed: number }>,
-  /** Degrees to subtract from every tropical longitude. Zero for tropical. */
-  ayanamsaShift: number,
+  ayanamsa: number,
   houses: RawHouses | null,
   timeKnown: boolean,
   placidusDefined: boolean,
-): FrameResult {
-  const shift = (longitude: number) => norm360(longitude - ayanamsaShift)
+): SystemResult {
+  const shift = (longitude: number) => norm360(longitude - ayanamsa)
 
   const ascendantLongitude = houses && timeKnown ? shift(houses.ascendant) : null
 
   let cusps: number[] | null = null
   if (ascendantLongitude !== null) {
-    if (houseSystem === 'whole-sign') {
+    if (system.houseSystem === 'whole-sign') {
       cusps = wholeSignCusps(ascendantLongitude)
     } else if (houses && placidusDefined) {
       cusps = houses.cusps.map(shift)
@@ -176,7 +180,9 @@ function buildFrame(
 
   const houseOf = (longitude: number): number | null => {
     if (ascendantLongitude === null) return null
-    if (houseSystem === 'whole-sign') return wholeSignHouse(longitude, ascendantLongitude)
+    if (system.houseSystem === 'whole-sign') {
+      return wholeSignHouse(longitude, ascendantLongitude)
+    }
     return cusps ? houseFromCusps(longitude, cusps) : null
   }
 
@@ -191,17 +197,29 @@ function buildFrame(
       ? null
       : makePlacement('ascendant', 'Ascendant', ascendantLongitude, 0, 1)
 
-  return { frame, houseSystem, placements, ascendant, cusps }
+  return {
+    system,
+    houseSystem: system.houseSystem,
+    ayanamsa,
+    placements,
+    ascendant,
+    cusps,
+  }
 }
 
-/** Compute both frames from one set of birth data. */
-export async function computeChart(birth: BirthData): Promise<Chart> {
+/** Compute the selected systems from one set of birth data. */
+export async function computeChart(
+  birth: BirthData,
+  selection: SystemId[] = DEFAULT_SELECTION,
+): Promise<Chart> {
   const swe = await loadEphemeris()
   const notes: string[] = []
 
+  const systemIds = selection.length > 0 ? selection : DEFAULT_SELECTION
+
   // An unknown birth time still needs *some* instant to place the slow bodies.
   // We use noon local, and the honesty is in what we refuse to report from it:
-  // no Ascendant, no houses, in either tradition.
+  // no Ascendant, no houses, in any tradition.
   const local: LocalDateTime = birth.timeKnown
     ? birth.local
     : { ...birth.local, hour: 12, minute: 0 }
@@ -228,15 +246,15 @@ export async function computeChart(birth: BirthData): Promise<Chart> {
 
   const utc = toUtc(local, offset)
   const jd = julianDay(swe, utc)
-  const ayanamsa = ayanamsaAt(swe, jd)
 
   const placidusDefined = placidusIsDefined(birth.latitude)
-  if (birth.timeKnown && !placidusDefined) {
+  const usesPlacidus = systemIds.some((id) => SYSTEMS[id].houseSystem === 'placidus')
+  if (birth.timeKnown && !placidusDefined && usesPlacidus) {
     notes.push(
       'This latitude lies inside the polar circles, where Placidus house '
       + 'cusps are undefined -- some cusps never rise. Western house '
-      + 'placements are withheld rather than approximated. The Vedic whole '
-      + 'sign houses are unaffected, because they do not depend on latitude.',
+      + 'placements are withheld rather than approximated. Whole sign houses '
+      + 'are unaffected, because they do not depend on latitude.',
     )
   }
 
@@ -251,20 +269,33 @@ export async function computeChart(birth: BirthData): Promise<Chart> {
     ? placidusHouses(swe, jd, birth.latitude, birth.longitudeEast)
     : null
 
+  const systems: Record<string, SystemResult> = {}
+  for (const id of systemIds) {
+    const system = SYSTEMS[id]
+    const ayanamsa = system.ayanamsaMode === null
+      ? 0
+      : ayanamsaFor(swe, jd, system.ayanamsaMode)
+
+    systems[id] = buildSystem(
+      system, tropicalPositions, ayanamsa, houses, birth.timeKnown, placidusDefined,
+    )
+  }
+
   return {
     birth,
     offset,
     utc,
     julianDay: jd,
-    ayanamsa,
     timeKnown: birth.timeKnown,
     placidusDefined,
-    tropical: buildFrame(
-      'tropical', 'placidus', tropicalPositions, 0, houses, birth.timeKnown, placidusDefined,
-    ),
-    sidereal: buildFrame(
-      'sidereal', 'whole-sign', tropicalPositions, ayanamsa, houses, birth.timeKnown, true,
-    ),
+    systemIds,
+    systems,
     notes,
   }
+}
+
+/** Pull one point out of a system result. */
+export function placementOf(result: SystemResult, point: PointId): Placement | null {
+  if (point === 'ascendant') return result.ascendant
+  return result.placements.find((placement) => placement.point === point) ?? null
 }

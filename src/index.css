@@ -52,6 +52,16 @@
   --color-mark: #27506f;
   --color-mark-soft: #8ba4b9;
 
+  /*
+   * The convergence accent. A sepia -- old ink, the second colour a hand
+   * would reach for on a proof. Deliberately not green: convergence is a
+   * finding, not a pass, and a status palette would make divergence read as
+   * a failure. The two marks are told apart by hue AND by form: divergence
+   * is a dotted leader line, convergence a solid tie.
+   */
+  --color-meet: #6b4e22;
+  --color-meet-soft: #b9a377;
+
   --font-serif: 'Source Serif 4 Variable', 'Iowan Old Style', 'Palatino Linotype',
     'Source Serif Pro', Georgia, 'Times New Roman', serif;
 }
@@ -555,24 +565,37 @@ p {
 }
 
 /*
- * The divergence marker.
+ * The two findings.
  *
- * A marginal rule in the accent, a shift in ink weight, and a drafting-style
- * leader line joining the two differing values. An annotation on a document,
- * not an error state.
+ * Divergence and convergence are both results, so neither is styled as a
+ * status. They are distinguished by ink and by form:
  *
- * The marking is specific about which axis disagrees. A row whose houses
- * differ but whose sign matches gets its house labels marked and its sign
- * values left quiet, so the mark always points at the actual disagreement
- * rather than at the whole row.
+ *   divergence  -- blue pencil, a dotted leader line under the differing
+ *                  values, an open marginal rule
+ *   convergence -- sepia, a solid tie joining the agreeing values, a
+ *                  bracketed marginal rule
+ *
+ * The marking is specific about which axis produced which finding, so a row
+ * whose sign agrees but whose houses differ shows both, each against the
+ * thing it actually describes.
  */
-.plate tr.diverges .col-index {
+.plate tbody tr.sign-diverges .col-index,
+.plate tbody tr.house-diverges .col-index {
   position: relative;
   color: var(--color-mark);
   font-weight: 600;
 }
 
-.plate tr.diverges .col-index::before {
+.plate tbody tr.sign-converges:not(.sign-diverges) .col-index,
+.plate tbody tr.house-converges:not(.house-diverges) .col-index {
+  position: relative;
+  color: var(--color-meet);
+  font-weight: 600;
+}
+
+/* Marginal rule: open for divergence. */
+.plate tbody tr.sign-diverges .col-index::before,
+.plate tbody tr.house-diverges .col-index::before {
   content: '';
   position: absolute;
   left: -0.75rem;
@@ -582,17 +605,35 @@ p {
   background-color: var(--color-mark);
 }
 
-.plate tr.sign-diverges .value-tropical,
-.plate tr.sign-diverges .value-sidereal {
+/* Marginal rule: bracketed for convergence, so form differs as well as ink. */
+.plate tbody tr.sign-converges:not(.sign-diverges) .col-index::before,
+.plate tbody tr.house-converges:not(.house-diverges):not(.sign-diverges) .col-index::before {
+  content: '';
+  position: absolute;
+  left: -0.75rem;
+  top: 0.5rem;
+  bottom: 0.5rem;
+  width: 5px;
+  border: 2px solid var(--color-meet);
+  border-right: 0;
+  background: transparent;
+}
+
+/* Values: sign is the axis these cells show, so sign drives their ink. */
+.plate tbody tr.sign-diverges .value {
   position: relative;
   color: var(--color-mark);
   font-weight: 600;
 }
 
-/* The leader line: a dotted rule under both differing values, the way a
-   drafting note connects a callout to the thing it annotates. */
-.plate tr.sign-diverges .value-tropical::after,
-.plate tr.sign-diverges .value-sidereal::after {
+.plate tbody tr.sign-converges .value {
+  position: relative;
+  color: var(--color-meet);
+  font-weight: 600;
+}
+
+/* Leader line: dotted where they part. */
+.plate tbody tr.sign-diverges .value::after {
   content: '';
   position: absolute;
   left: 0;
@@ -601,9 +642,77 @@ p {
   border-bottom: 1px dotted var(--color-mark-soft);
 }
 
-.plate tr.house-diverges .house {
+/* Tie: solid where they meet. */
+.plate tbody tr.sign-converges .value::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -0.1875rem;
+  border-bottom: 1px solid var(--color-meet-soft);
+}
+
+.plate tbody tr.house-diverges .house {
   color: var(--color-mark);
   font-weight: 600;
+}
+
+.plate tbody tr.house-converges .house {
+  color: var(--color-meet);
+  font-weight: 600;
+}
+
+.marks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1875rem;
+  align-items: flex-start;
+}
+
+.mark {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.mark-diverge {
+  color: var(--color-mark);
+}
+
+.mark-diverge::before {
+  content: '';
+  display: inline-block;
+  width: 0.9em;
+  margin-right: 0.4em;
+  vertical-align: middle;
+  /* Dotted, echoing the leader line under the values that differ. */
+  border-top: 1px dotted currentColor;
+}
+
+.mark-converge {
+  color: var(--color-meet);
+}
+
+.mark-converge::before {
+  content: '';
+  display: inline-block;
+  width: 0.9em;
+  margin-right: 0.4em;
+  vertical-align: middle;
+  /* Solid, echoing the tie under the values that agree. */
+  border-top: 1px solid currentColor;
+}
+
+.count-diverge {
+  font-weight: 600;
+  color: var(--color-mark);
+}
+
+.count-converge {
+  font-weight: 600;
+  color: var(--color-meet);
 }
 
 .mark-note {
@@ -670,8 +779,14 @@ p {
   position: relative;
 }
 
-.entry.diverges {
+.entry.sign-diverges,
+.entry.house-diverges {
   border-left: 2px solid var(--color-mark);
+}
+
+.entry.sign-converges:not(.sign-diverges):not(.house-diverges),
+.entry.house-converges:not(.house-diverges):not(.sign-diverges) {
+  border-left: 5px double var(--color-meet);
 }
 
 .entry-head {
@@ -692,7 +807,8 @@ p {
   color: var(--color-ink-faint);
 }
 
-.entry.diverges .entry-index {
+.entry.sign-diverges .entry-index,
+.entry.house-diverges .entry-index {
   color: var(--color-mark);
 }
 
@@ -722,6 +838,16 @@ p {
   font-weight: 600;
 }
 
+.entry.sign-converges .entry-frame .value {
+  color: var(--color-meet);
+  font-weight: 600;
+}
+
+.entry.house-converges .entry-frame .house {
+  color: var(--color-meet);
+  font-weight: 600;
+}
+
 .entry-frame .house {
   display: block;
   font-size: 0.75rem;
@@ -746,6 +872,19 @@ p {
   top: 0.75rem;
   bottom: 0.75rem;
   border-left: 1px dotted var(--color-mark-soft);
+}
+
+.entry.sign-converges .entry-frames {
+  position: relative;
+}
+
+.entry.sign-converges .entry-frames::before {
+  content: '';
+  position: absolute;
+  left: 4.75rem;
+  top: 0.75rem;
+  bottom: 0.75rem;
+  border-left: 1px solid var(--color-meet-soft);
 }
 
 /* ---------------------------------------------------------------- notices */
@@ -825,4 +964,251 @@ p {
   clip-path: inset(50%);
   white-space: nowrap;
   border: 0;
+}
+
+/* ---------------------------------------------------------------- toggles */
+
+/*
+ * Which systems to compare. Deliberately part of the record, not a floating
+ * control: choosing the frames is part of stating the question.
+ */
+.toggles {
+  border: 0;
+  border-bottom: 1px solid var(--color-rule);
+  margin: 0;
+  padding: 1.25rem 0 1.5rem;
+}
+
+.toggles legend {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-ink-faint);
+  padding: 0;
+  margin-bottom: 0.75rem;
+}
+
+.toggle-row {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.toggle {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0 0.625rem;
+  align-items: baseline;
+  cursor: pointer;
+  padding: 0.375rem 0;
+}
+
+.toggle input {
+  accent-color: var(--color-mark);
+  width: 1rem;
+  height: 1rem;
+}
+
+.toggle input:disabled {
+  cursor: not-allowed;
+}
+
+.toggle-name {
+  font-size: 1rem;
+}
+
+.toggle:not(.on) .toggle-name {
+  color: var(--color-ink-faint);
+}
+
+.toggle-meta {
+  grid-column: 2;
+  font-size: 0.75rem;
+  color: var(--color-ink-faint);
+  letter-spacing: 0.04em;
+}
+
+.toggle-note {
+  font-size: 0.8125rem;
+  color: var(--color-ink-soft);
+  max-width: 52ch;
+  margin: 1rem 0 0;
+  padding-left: 1rem;
+  border-left: 1px solid var(--color-rule);
+}
+
+/* ----------------------------------------------------------- associations */
+
+/*
+ * Shown only where systems converge, to say what it is they converged on.
+ * Each entry is attributed to the tradition it comes from and set in that
+ * tradition's own vocabulary. These describe the systems, never the reader.
+ */
+.associations {
+  margin-top: 1rem;
+  padding-top: 0.875rem;
+  border-top: 1px solid var(--color-rule);
+}
+
+.associations-head {
+  font-size: 0.6875rem !important;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-meet) !important;
+  margin: 0 0 0.625rem !important;
+}
+
+.associations dl {
+  margin: 0;
+  display: grid;
+  gap: 0.625rem;
+}
+
+.associations dt {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-ink-faint);
+}
+
+.associations dd {
+  margin: 0.125rem 0 0;
+  font-size: 0.875rem;
+  color: var(--color-ink-soft);
+  max-width: 56ch;
+}
+
+/* ------------------------------------------------------------ table extras */
+
+.plate .col-sub {
+  display: block;
+  font-size: 0.625rem;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  color: var(--color-ink-faint);
+  text-transform: none;
+}
+
+.plate .value {
+  display: inline-block;
+}
+
+/* ------------------------------------------------------------- utilities  */
+
+.band {
+  padding-block: 4rem;
+}
+
+.lede {
+  margin-top: 1rem;
+  margin-bottom: 2.5rem;
+  color: var(--color-ink-soft);
+}
+
+.lede-wide {
+  margin-top: 1.25rem;
+  margin-bottom: 3rem;
+}
+
+.consequence {
+  margin-top: 2rem;
+  color: var(--color-ink-soft);
+}
+
+.masthead-note {
+  margin-top: 2.5rem;
+  font-size: 0.9375rem;
+  color: var(--color-ink-soft);
+}
+
+.frames-grid {
+  margin-top: 2.5rem;
+}
+
+.summary-line {
+  margin-top: 1.5rem;
+}
+
+.gap-note {
+  margin-top: 1rem;
+  color: var(--color-ink-soft);
+  font-size: 0.9375rem;
+}
+
+.notes {
+  margin-top: 2rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.notice.error {
+  margin-top: 1.5rem;
+  border-left-color: var(--color-mark);
+}
+
+.submit {
+  margin-top: 2rem;
+}
+
+.meta.chosen {
+  display: block;
+  margin-top: 0.375rem;
+}
+
+.readout {
+  margin-top: 2.5rem;
+}
+
+.colophon .rule {
+  margin-bottom: 3rem;
+}
+
+.fineprint {
+  color: var(--color-ink-faint);
+  font-size: 0.8125rem;
+}
+
+section#comparison {
+  outline: none;
+}
+
+.rule-heavy {
+  margin: 2.5rem 0 2rem;
+}
+
+/*
+ * The note row. The entry row carries the data and the marginal marks; the
+ * note row carries the explanation at full measure beneath it, the way a
+ * plate carries its caption.
+ */
+.plate tbody tr.entry-row td,
+.plate tbody tr.entry-row th {
+  border-bottom: 0;
+  padding-bottom: 0.5rem;
+}
+
+.plate tbody tr.note-row td {
+  padding-top: 0;
+  padding-bottom: 1rem;
+}
+
+.plate tbody tr.note-row .why p {
+  max-width: 64ch;
+}
+
+/* The marginal rule spans both rows, so it is drawn on each half. */
+.plate tbody tr.entry-row .col-index::before {
+  top: 0.5rem;
+  bottom: -0.5rem;
+}
+
+.plate tbody tr.note-row .col-index::before {
+  top: -0.5rem;
+  bottom: 0.5rem;
+}
+
+.toggle-locked {
+  border-left-color: var(--color-ink-faint);
 }

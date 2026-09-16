@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest'
 import * as Astronomy from 'astronomy-engine'
 
-import { type PointId, computeChart, houseFromCusps, wholeSignHouse } from './chart'
+import { type PointId, computeChart, houseFromCusps, placementOf, wholeSignHouse } from './chart'
 import { BODIES } from './ephemeris'
 import { angularSeparation, degreeInSign, formatLongitude, norm360, signOf } from './signs'
 import {
@@ -172,12 +172,12 @@ describe('Lahiri ayanamsa', () => {
         manualOffsetMinutes: 0,
       })
 
-      const delta = Math.abs(chart.ayanamsa - expectedDegrees)
+      const delta = Math.abs(chart.systems.vedic.ayanamsa - expectedDegrees)
       expect(
         delta,
         `ayanamsa at ${utcIso}\n`
         + `  expected ${expectedDegrees.toFixed(5)} deg\n`
-        + `  actual   ${chart.ayanamsa.toFixed(5)} deg\n`
+        + `  actual   ${chart.systems.vedic.ayanamsa.toFixed(5)} deg\n`
         + `  delta    ${(delta * 3600).toFixed(1)} arcsec`,
       ).toBeLessThanOrEqual(AYANAMSA_TOLERANCE)
     },
@@ -191,7 +191,7 @@ describe('Lahiri ayanamsa', () => {
       longitudeEast: 0,
       zone: 'UTC',
       manualOffsetMinutes: 0,
-    })).ayanamsa
+    })).systems.vedic.ayanamsa
 
     const drift = ((await at(2000)) - (await at(1900))) / 100 * 3600
     expect(drift).toBeGreaterThan(49)
@@ -210,7 +210,7 @@ describe.each(REFERENCE_CHARTS)('reference chart: $name', (reference) => {
 
   it('matches the published tropical Ascendant', async () => {
     const chart = await computeChart(reference.birth)
-    const ascendant = chart.tropical.ascendant
+    const ascendant = chart.systems.western.ascendant
     expect(ascendant).not.toBeNull()
     expectPoint(
       `${reference.name} tropical Ascendant`,
@@ -222,7 +222,7 @@ describe.each(REFERENCE_CHARTS)('reference chart: $name', (reference) => {
 
   it.each(BODIES)('matches the published tropical %s', async (body) => {
     const chart = await computeChart(reference.birth)
-    const placement = chart.tropical.placements.find((p) => p.point === body)!
+    const placement = placementOf(chart.systems.western, body)!
     expectPoint(
       `${reference.name} tropical ${body}`,
       placement.longitude,
@@ -237,17 +237,17 @@ describe.each(REFERENCE_CHARTS)('reference chart: $name', (reference) => {
     const points: PointId[] = [...BODIES, 'ascendant']
     for (const point of points) {
       const tropical = point === 'ascendant'
-        ? chart.tropical.ascendant!
-        : chart.tropical.placements.find((p) => p.point === point)!
+        ? chart.systems.western.ascendant!
+        : placementOf(chart.systems.western, point)!
       const sidereal = point === 'ascendant'
-        ? chart.sidereal.ascendant!
-        : chart.sidereal.placements.find((p) => p.point === point)!
+        ? chart.systems.vedic.ascendant!
+        : placementOf(chart.systems.vedic, point)!
 
       const difference = norm360(tropical.longitude - sidereal.longitude)
       expect(
-        Math.abs(difference - chart.ayanamsa),
+        Math.abs(difference - chart.systems.vedic.ayanamsa),
         `${point}: tropical minus sidereal should equal the ayanamsa exactly.\n`
-        + `  ayanamsa   ${chart.ayanamsa.toFixed(6)} deg\n`
+        + `  ayanamsa   ${chart.systems.vedic.ayanamsa.toFixed(6)} deg\n`
         + `  difference ${difference.toFixed(6)} deg\n`
         + '  A mismatch means positions were computed twice instead of once.',
       ).toBeLessThan(1e-9)
@@ -269,7 +269,7 @@ describe.each(REFERENCE_CHARTS)('reference chart: $name', (reference) => {
     }
 
     for (const body of BODIES) {
-      const ours = chart.tropical.placements.find((p) => p.point === body)!.longitude
+      const ours = placementOf(chart.systems.western, body)!.longitude
       const theirs = Astronomy.Ecliptic(
         Astronomy.GeoVector(names[body], time, true),
       ).elon
@@ -286,11 +286,11 @@ describe.each(REFERENCE_CHARTS)('reference chart: $name', (reference) => {
 
   it('assigns every body a house in both systems', async () => {
     const chart = await computeChart(reference.birth)
-    for (const frame of [chart.tropical, chart.sidereal]) {
+    for (const frame of [chart.systems.western, chart.systems.vedic]) {
       for (const placement of frame.placements) {
-        expect(placement.house, `${frame.frame} ${placement.point}`)
+        expect(placement.house, `${frame.system.id} ${placement.point}`)
           .toBeGreaterThanOrEqual(1)
-        expect(placement.house, `${frame.frame} ${placement.point}`)
+        expect(placement.house, `${frame.system.id} ${placement.point}`)
           .toBeLessThanOrEqual(12)
       }
       expect(frame.ascendant!.house).toBe(1)
@@ -299,10 +299,10 @@ describe.each(REFERENCE_CHARTS)('reference chart: $name', (reference) => {
 
   it('puts the Vedic Ascendant at the start of the first whole sign house', async () => {
     const chart = await computeChart(reference.birth)
-    const ascendant = chart.sidereal.ascendant!
-    expect(chart.sidereal.cusps![0]).toBeCloseTo(signOf(ascendant.longitude) * 30, 9)
+    const ascendant = chart.systems.vedic.ascendant!
+    expect(chart.systems.vedic.cusps![0]).toBeCloseTo(signOf(ascendant.longitude) * 30, 9)
     // Every whole sign cusp is a sign boundary. Placidus cusps are not.
-    for (const cusp of chart.sidereal.cusps!) {
+    for (const cusp of chart.systems.vedic.cusps!) {
       expect(cusp % 30).toBeCloseTo(0, 9)
     }
   })
@@ -319,14 +319,14 @@ describe('honest degradation', () => {
   it('withholds the Ascendant and all houses when the birth time is unknown', async () => {
     const chart = await computeChart({ ...bangkok, timeKnown: false })
 
-    expect(chart.tropical.ascendant).toBeNull()
-    expect(chart.sidereal.ascendant).toBeNull()
-    expect(chart.tropical.cusps).toBeNull()
-    expect(chart.sidereal.cusps).toBeNull()
+    expect(chart.systems.western.ascendant).toBeNull()
+    expect(chart.systems.vedic.ascendant).toBeNull()
+    expect(chart.systems.western.cusps).toBeNull()
+    expect(chart.systems.vedic.cusps).toBeNull()
 
-    for (const frame of [chart.tropical, chart.sidereal]) {
+    for (const frame of [chart.systems.western, chart.systems.vedic]) {
       for (const placement of frame.placements) {
-        expect(placement.house, `${frame.frame} ${placement.point}`).toBeNull()
+        expect(placement.house, `${frame.system.id} ${placement.point}`).toBeNull()
       }
     }
 
@@ -335,8 +335,8 @@ describe('honest degradation', () => {
 
   it('still reports sign placements when the birth time is unknown', async () => {
     const chart = await computeChart({ ...bangkok, timeKnown: false })
-    expect(chart.tropical.placements).toHaveLength(BODIES.length)
-    expect(chart.tropical.placements.every((p) => p.signName.length > 0)).toBe(true)
+    expect(chart.systems.western.placements).toHaveLength(BODIES.length)
+    expect(chart.systems.western.placements.every((p) => p.signName.length > 0)).toBe(true)
   })
 
   it('withholds Placidus houses inside the polar circles rather than inventing them', async () => {
@@ -349,20 +349,20 @@ describe('honest degradation', () => {
     })
 
     expect(chart.placidusDefined).toBe(false)
-    expect(chart.tropical.cusps).toBeNull()
-    expect(chart.tropical.placements.every((p) => p.house === null)).toBe(true)
+    expect(chart.systems.western.cusps).toBeNull()
+    expect(chart.systems.western.placements.every((p) => p.house === null)).toBe(true)
     expect(chart.notes.join(' ')).toMatch(/polar circles/i)
 
     // Whole sign does not depend on latitude, so the Vedic side survives.
-    expect(chart.sidereal.cusps).not.toBeNull()
-    expect(chart.sidereal.placements.every((p) => p.house !== null)).toBe(true)
+    expect(chart.systems.vedic.cusps).not.toBeNull()
+    expect(chart.systems.vedic.placements.every((p) => p.house !== null)).toBe(true)
   })
 
   it('reports retrograde motion as a display property, not a position error', async () => {
     // Mercury was retrograde in mid-March 1879.
     const chart = await computeChart(REFERENCE_CHARTS[0].birth)
-    const tropicalMercury = chart.tropical.placements.find((p) => p.point === 'mercury')!
-    const siderealMercury = chart.sidereal.placements.find((p) => p.point === 'mercury')!
+    const tropicalMercury = placementOf(chart.systems.western, 'mercury')!
+    const siderealMercury = placementOf(chart.systems.vedic, 'mercury')!
     // Whatever it is, both frames must agree -- retrogradation is not
     // frame-dependent.
     expect(tropicalMercury.retrograde).toBe(siderealMercury.retrograde)

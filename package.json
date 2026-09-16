@@ -11,7 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -b --noEmit",
-    "verify": "vite-node src/engine/verify.ts",
+    "verify": "npx vite-node src/engine/verify.ts",
     "build:cities": "node scripts/build-cities.mjs",
     "copy:wasm": "node scripts/copy-wasm.mjs",
     "prebuild": "node scripts/copy-wasm.mjs",
