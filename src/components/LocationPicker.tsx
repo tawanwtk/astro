@@ -88,7 +88,10 @@ function pinChoice(
     longitudeEast,
     zone: nearest.place.zone,
     source,
-    label: formatCoordinates(latitude, longitudeEast),
+    // Names how the point was chosen, not where it is. The readout prints the
+    // coordinates itself, immediately after this, so returning them here too
+    // printed them twice.
+    label: source === 'manual' ? 'Entered coordinates' : 'Dropped pin',
     zoneFrom: nearest,
   }
 }

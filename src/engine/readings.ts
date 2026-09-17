@@ -25,7 +25,7 @@
  */
 import type { PointId } from './chart'
 import type { Comparison } from './divergence'
-import { type Body, BODIES } from './ephemeris'
+import type { Body } from './ephemeris'
 import { type DignityFinding, dignityOf } from './dignity'
 import { houseSignification, signSignification } from './associations'
 import { formatDegrees, type SignIndex, SIGNS } from './signs'
@@ -325,9 +325,6 @@ export function allReadingTables(): string {
     ...Object.values(READINGS_FRAMING),
   ].join(' ')
 }
-
-/** Bodies the readings cover: the seven classical planets plus the Ascendant. */
-export const READING_BODY_COUNT = BODIES.length + 1
 
 /**
  * The framing, stated plainly and shown with the readings rather than filed

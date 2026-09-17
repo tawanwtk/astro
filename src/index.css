@@ -1148,10 +1148,6 @@ p {
 
 /* ------------------------------------------------------------- utilities  */
 
-.band {
-  padding-block: 4rem;
-}
-
 .lede {
   margin-top: 1rem;
   margin-bottom: 2.5rem;
@@ -1172,10 +1168,6 @@ p {
   margin-top: 2.5rem;
   font-size: 0.9375rem;
   color: var(--color-ink-soft);
-}
-
-.frames-grid {
-  margin-top: 2.5rem;
 }
 
 .summary-line {
@@ -1549,8 +1541,7 @@ section#comparison {
   fill: var(--color-paper-soft);
 }
 
-.meet-count,
-.meet-none {
+.meet-count {
   margin-top: 2rem;
   color: var(--color-paper);
 }

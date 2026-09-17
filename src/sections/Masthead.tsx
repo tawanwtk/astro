@@ -22,7 +22,7 @@ export function Masthead() {
         </p>
         <p className="masthead-descend" aria-hidden="true">
           <span className="descend-rule" />
-          <span className="descend-word">Descend</span>
+          <span>Descend</span>
         </p>
       </div>
     </section>
