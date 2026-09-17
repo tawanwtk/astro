@@ -15,17 +15,38 @@ the readings.
 
 ## Privacy
 
-Fully client-side. No backend, no API keys, no network calls after
-page load. The ephemeris is bundled and runs in the browser. Birth
-data is entered, computed and displayed locally and is never
-transmitted anywhere.
+Fully client-side. No backend, no API keys, no analytics, no storage.
+The ephemeris is bundled and runs in the browser: birth data is
+entered, computed and displayed locally and is never transmitted.
+
+One thing does leave, and it is named rather than glossed. The
+location picker draws an OpenStreetMap map, and each tile is an image
+fetched from OSM's servers, so those requests indicate which square of
+the world is on screen. Nothing typed is ever sent — place search
+matches a bundled city list in memory, and a dropped pin's time zone
+is resolved against that same list, so there is no geocoding request
+of any kind. The coordinate entry under the map is a complete path to
+a chart and fetches no tiles at all.
 
 ## Framing
 
 This tool is interpretive. It is not evidence-based and does not
-present itself as such. It describes systems and their assumptions —
-it makes no claims about people, offers no predictions and gives no
-advice.
+present itself as such — the readings section says so at its head, at
+reading size, not in a collapsed disclaimer.
+
+It does carry readings, and they are lookups rather than generated
+prose. Each tradition has fixed tables — planetary nature, sign and
+house signification, essential dignity — and the chart indexes them.
+Every reading names the tradition it came from and shows the lookups
+behind it. Setting them side by side is the point: handed the same
+body at the same moment, the two traditions reach for vocabularies
+that do not translate, and often disagree about the sign, the house
+and the dignity as well.
+
+It makes no claims about people, offers no predictions and gives no
+advice. Second-person address, prediction and evaluation of a person
+fail the build; the framing tests scan both the tables and everything
+generated from them.
 
 ## Develop
 
@@ -48,9 +69,13 @@ Build settings:
 | Node version | 20 or later |
 
 `_headers` is copied into `dist` by the build and carries the
-Content-Security-Policy. `connect-src 'self'` means the no-network
-promise is enforced by the browser rather than resting on the source
-continuing to contain no fetch call.
+Content-Security-Policy, which draws the boundary rather than leaving
+it to the source continuing to behave. `img-src` admits the OSM tile
+hosts and nothing else; `connect-src` stays `'self'`, so fetch, XHR,
+WebSocket and sendBeacon to a third party are blocked by the browser.
+Tiles can travel because they are images; birth data has no channel
+open to it. `design.test.ts` asserts both halves, and fails if a
+second third-party host ever appears in the policy.
 
 The canonical hostname is `https://astrodivergence.pages.dev/`. It is
 set in `index.html` (canonical and `og:*`), `public/robots.txt` and

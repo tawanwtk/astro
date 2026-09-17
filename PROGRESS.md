@@ -1,6 +1,6 @@
 # PROGRESS
 
-Updated 2026-09-16.
+Updated 2026-09-17.
 
 **Live: https://astrodivergence.pages.dev/**
 
@@ -8,6 +8,12 @@ v1 is shipped. Every item in the definition of done is met and
 verified against the deployed site. Since then: a convergence view,
 an N-system engine with toggles, and a researched decision not to
 ship Thai — see below.
+
+**Unreleased, built 2026-09-17, not yet deployed.** Three changes:
+interpretive readings assembled by lookup, a Leaflet map location
+picker, and a restructure from five sections to seven. The map moved
+the no-network rule, which has been rewritten rather than quietly
+broken — see "The network line moved" below.
 
 ## Built
 
@@ -19,6 +25,9 @@ ship Thai — see below.
 | 3 — divergence | Done. `src/engine/divergence.ts`. |
 | 4 — design | Done. Editorial plate register, five sections, parallax last. |
 | 5 — ship | Done. Deployed to Cloudflare Pages. |
+| 6 — readings | Done, not deployed. `src/engine/readings.ts` and `src/engine/dignity.ts`. |
+| 7 — map picker | Done, not deployed. `src/components/LocationPicker.tsx`. |
+| 8 — seven sections | Done, not deployed. `src/sections/`. |
 
 ## Definition of done
 
@@ -27,11 +36,11 @@ ship Thai — see below.
 | Birth data in, comparison table out, divergence marked | Met |
 | Convergence marked as the stronger, distinct finding | Met — separate ink and form, no status semantics |
 | Ascendant correct against two known reference charts | Met — under half an arcminute on both |
-| Works at 390px | Met — verified in a real 390px viewport |
-| Works with reduced motion | Met — verified functionally, not just in CSS |
-| Lighthouse performance ≥ 90 | Met — 93 mobile, 100 desktop |
-| Lighthouse accessibility ≥ 90 | Met — 100 |
-| Deployed to Cloudflare Pages | Met |
+| Works at 390px | Met — re-verified at 390px after the restructure: zero horizontal overflow, zero elements outside the viewport, all spreads collapse to one column |
+| Works with reduced motion | Met for the deployed version. The new Leaflet map disables its zoom, pan and fade animation under `prefers-reduced-motion`, asserted in `design.test.ts`, but that has not been confirmed in a real reduced-motion browser session yet |
+| Lighthouse performance ≥ 90 | Met at last deploy — 93 mobile, 100 desktop. **Needs re-measuring**: readings roughly double the DOM and Leaflet adds a 149 kB chunk |
+| Lighthouse accessibility ≥ 90 | Met at last deploy — 100. **Needs re-measuring** after the restructure |
+| Deployed to Cloudflare Pages | Met for v1; the three 2026-09-17 changes are **not deployed** |
 | OG tags in static HTML, absolute image URL, canonical set | Met — confirmed in the served HTML |
 
 ## Verified
@@ -190,13 +199,32 @@ Not defects, but true things a reader should know.
   longitude instead. For a birth in a place whose local time was set by
   a nearby town clock rather than by its own meridian, the true offset
   could differ by a few minutes.
-- **The place list has 7,281 entries.** A small town may not be there.
-  Coordinates can be checked against what is shown, but there is no
-  manual latitude/longitude entry in the UI yet — the engine supports
-  it, the form does not expose it.
+- **The place list has 7,281 entries.** A small town may not be there
+  by name — but the map now covers the gap: drop a pin anywhere and
+  the coordinates are exact, or type them into the coordinate entry
+  under the map. Both paths take the time zone from the nearest listed
+  place, and the interface reports which place and how far away.
+- **A pin far from any listed place borrows a time zone from far
+  away.** The distance is always shown, and beyond 150 km the
+  interface says the zone may be wrong and suggests setting the place
+  by name instead. Mid-ocean and deep-desert pins are where this
+  bites.
+- **The map needs the network; nothing else does.** If tiles are
+  blocked or the connection is down, the picker says so and the
+  coordinate entry below it still reaches a chart.
 - **Lahiri has variants.** We use the standard Indian government value
   (`SE_SIDM_LAHIRI`), not true Chitrapaksha. They differ by under an
   arcminute.
+- **The readings are one recension each.** Western traditional here
+  means the Hellenistic scheme as it reaches modern practice through
+  Ptolemy; Jyotiṣa means Parāśarī doctrine. Both traditions contain
+  schools that would word these entries differently, and the tables
+  do not represent them. Each reading names its source so the claim
+  stays bounded.
+- **Readings cover the seven classical planets and the Ascendant.**
+  Nothing is said about aspects, nakṣatras, daśās, or the outer
+  planets, because the comparison the tool makes does not extend to
+  them.
 
 ## Thai Suriyayart — researched, not shipped, and why
 
@@ -273,6 +301,115 @@ than the one this table asks. Deliberately out of scope here.
 Chart wheels. Interpretive text generation. Accounts, saving,
 sharing, any backend.
 
+## The network line moved
+
+The project's first rule was no network calls after page load. The
+map breaks it, deliberately and with the rule rewritten rather than
+quietly ignored.
+
+**What now leaves the browser:** map tile images, fetched from
+OpenStreetMap when the picker is used. A tile request tells OSM which
+square of the world is on screen, which after a pin drop is a rough
+indication of a birth place.
+
+**What still does not:** everything else. The date, the time and the
+coordinates are never transmitted. Place search matches the bundled
+city list in memory, so a typed place name never goes anywhere, and
+a dropped pin's time zone is resolved against that same list — there
+is no geocoding request and no reverse-geocoding request.
+
+**What enforces it:** the CSP in `_headers`. `img-src` admits the OSM
+tile hosts and nothing else; `connect-src` stays `'self'`, so fetch,
+XHR, WebSocket and sendBeacon to a third party are blocked by the
+browser. Tiles can travel because they are images. Birth data has no
+open channel, whatever the source might one day say.
+`design.test.ts` asserts both halves and fails if a second
+third-party host ever appears in the policy.
+
+**What was rewritten so nothing claims otherwise:** the colophon (it
+used to say "nothing left this device"), the masthead note, CLAUDE.md,
+README.md and PROJECT_BRIEF.md. The manual coordinate entry under the
+map is a complete path to a chart that fetches no tiles, so a reader
+who would rather not touch OSM at all is not shut out.
+
+## Readings — looked up, not generated
+
+Built because this is a personal tool and the interpretive
+vocabularies are worth seeing collide. Built as a lookup because
+generated prose would have made every other claim in the project
+worth less.
+
+`src/engine/dignity.ts` holds the two traditions' schemes of
+essential dignity; `src/engine/readings.ts` holds planetary nature,
+the tradition's own body and sign names, and the assembly. Sign and
+house significations come from the existing `associations.ts`. The
+chart indexes the tables and the assembly is mechanical — no sentence
+is written for a particular chart, and the page shows the lookups
+behind each reading.
+
+Three genuine differences between the schemes are surfaced rather
+than flattened, and asserted in `readings.test.ts` so a later edit
+cannot quietly harmonise them:
+
+- The exaltation *degree* differs for three bodies. Sun: 19 Aries
+  Western, 10 Meṣa Jyotiṣa. Jupiter: 15 Cancer against 5 Karka.
+  Saturn: 21 Libra against 20 Tulā. The other four agree.
+- Detriment is Western only. Jyotiṣa has no such category, and the
+  code returns none rather than inventing an equivalent.
+- Mūlatrikoṇa is Jyotiṣa only, and is a degree band inside a ruled
+  sign rather than a whole sign.
+
+**Verified against Einstein**, whose chart happens to demonstrate the
+point better than an invented example could:
+
+| Body | Western | Jyotiṣa |
+|---|---|---|
+| Venus | Aries — **detriment** | Mīna — **uccha (exalted)** |
+| Saturn | Aries — fall | Mīna — no dignity |
+| Moon | Sagittarius — no dignity | Vṛścika — nīca |
+| Mercury | Aries — no dignity | Mīna — nīca |
+| Mars | Capricorn — exaltation | Makara — uccha |
+
+Venus is the case worth reading: the same body at the same moment is
+debilitated in one tradition and exalted in the other. Mars is the
+other: both traditions agree on the sign *and* agree it is exalted,
+and still put it in a different house (seventh Placidus, eighth whole
+sign). Every dignity above was checked by hand against standard
+doctrine.
+
+Framing is a standing part of the section, set at its head at reading
+size: astrology is not evidence-based, the readings are a lookup, and
+the payoff is the vocabularies rather than the verdicts. Not a
+collapsed disclaimer.
+
+## Seven sections
+
+Five became seven: masthead, record, frames, comparison,
+**convergence**, **readings**, colophon. `src/App.tsx` now holds only
+state and ordering; every section is a file in `src/sections/` and
+owns its own ground and composition — a title page, a two-column form
+with the map, an explanatory plate with the offset-rings figure
+between the two system descriptions, the table of record, an inverted
+dark commentary, a facing-page parallel text, and end matter.
+
+Two things caught in browser verification rather than by tests:
+
+- **The convergence section overstated its case.** It listed every
+  row where either axis agreed, which for the Einstein chart was
+  eight of eight — true by the letter, wrong in what it implied.
+  Sign agreement and house agreement are now counted and presented
+  separately, because they are not the same claim: keeping a sign
+  across zodiacs 22.2° apart is rare (3 of 8), while landing in the
+  same house is common (5 more) since Placidus and whole sign often
+  coincide.
+- **The inverted section rendered blank.** It set
+  `background-color: var(--color-ink)` in the same rule that
+  redefined `--color-ink` to the paper colour for its descendants.
+  Custom properties resolve against the element they are used on, so
+  it painted paper on paper. Fixed with a separate
+  `--color-ground-dark` token, with a test asserting the two stay
+  equal.
+
 ## Possible next
 
 - **A third system, so the toggles become live.** The cheapest real
@@ -280,7 +417,9 @@ sharing, any backend.
   that even "the sidereal zodiac" is not one thing, and would make the
   convergence view considerably more interesting than it can be with
   two systems.
-- Manual latitude/longitude entry in the form. The engine supports it;
-  the form does not expose it.
+- Deploy the three unreleased changes, and re-run Lighthouse against
+  the deployed site — the readings section roughly doubles the DOM
+  when a chart is present, and Leaflet adds 149 kB in its own chunk,
+  so the performance number needs re-measuring rather than assuming.
 - Thai Suriyayart, once the canon's constants are in hand.
 - BaZi, as its own engine with its own display.

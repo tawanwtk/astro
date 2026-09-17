@@ -53,20 +53,32 @@ The output is a comparison, not a verdict.
 
 ## Architecture
 
-**Fully client-side. No backend. No API keys. No network calls after
-page load.**
+**Fully client-side. No backend. No API keys. One named third-party
+request: OpenStreetMap map tiles.**
 
 Ephemeris runs in the browser via a bundled library. Birth data is
-entered, computed and displayed locally and is never transmitted
-anywhere. This is a hard requirement, not a preference — it is the
-reason this tool is trustworthy in a category full of data
-harvesting, and it should be stated plainly in the interface.
+entered, computed and displayed locally and is never transmitted.
+This is a hard requirement, not a preference — it is the reason this
+tool is trustworthy in a category full of data harvesting, and it
+should be stated plainly in the interface.
+
+The map is the one exception and it is bounded on purpose. Tiles are
+images, so they ride `img-src` while `connect-src` stays `'self'`;
+there is no channel by which birth data could be sent even in error.
+What OSM can infer is the map viewport, which after a pin drop is a
+rough location. State that plainly in the colophon — an exception
+that is documented is compatible with the claim; an exception that is
+glossed destroys it.
 
 Deploy target: Cloudflare Pages, static build.
 
-Place input: a bundled offline city list with coordinates, or manual
-latitude/longitude entry. **No geocoding API** — that would break the
-no-network rule.
+Place input: a map (Leaflet over OSM tiles) for searching and pin
+dropping, backed by a bundled offline city list, with manual
+latitude/longitude entry as a first-class fallback. **No geocoding
+API and no reverse-geocoding API** — search matches the bundled list
+in memory and a pin's time zone comes from the nearest listed place,
+so a typed place name is never transmitted. The map moved the network
+line; it did not move this one.
 
 Timezone: historical timezone offsets matter and are a common source
 of wrong charts. Handle the birth timezone explicitly rather than
