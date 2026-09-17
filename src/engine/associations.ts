@@ -170,3 +170,19 @@ export function allAssociationText(): string {
     .flatMap((row) => Object.values(row))
     .join(' ')
 }
+
+/**
+ * One tradition's line on a sign or a house, for the readings to build on.
+ *
+ * `signAssociations` and `houseAssociations` above answer "what do all the
+ * selected traditions say", which is the convergence question. A reading asks
+ * the narrower one: what does *this* tradition say, whether or not the others
+ * agree.
+ */
+export function signSignification(sign: SignIndex, systemId: SystemId): string {
+  return SIGN_ASSOCIATIONS[sign]?.[systemId] ?? ''
+}
+
+export function houseSignification(house: number, systemId: SystemId): string {
+  return HOUSE_ASSOCIATIONS[house - 1]?.[systemId] ?? ''
+}
