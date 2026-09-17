@@ -9,7 +9,7 @@
  *   - no scroll hijacking, no WebGL
  *   - fonts self-hosted, never fetched at runtime
  */
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 const css = readFileSync('src/index.css', 'utf8')
@@ -159,16 +159,53 @@ describe('contrast on the paper ground', () => {
   it('keeps the button legible in reverse', () => {
     expect(contrastRatio(paper(), token('ink'))).toBeGreaterThanOrEqual(4.5)
   })
+
+  it('keeps the dark ground and the ink the same colour', () => {
+    // They are separate tokens for a resolution reason, not a design one, so
+    // they must not drift apart.
+    expect(token('ground-dark')).toEqual(token('ink'))
+  })
+
+  /*
+   * The convergence section inverts the ground, and an inverted section is
+   * where contrast quietly goes wrong: the tokens that were checked against
+   * paper are now sitting on ink and nobody rechecks them. So the ink ground
+   * gets the same treatment the paper ground gets.
+   */
+  it.each([
+    ['paper'],
+    // Secondary ink for prose in the inverted section.
+    ['paper-soft'],
+    // The convergence accent, used for values and marks on the dark ground.
+    ['meet-soft'],
+  ])('--color-%s clears AA for normal text on the ink ground', (name) => {
+    // Checked against --color-ground-dark, which is what actually paints that
+    // section. --color-ink is redefined inside it and is not the background.
+    const ratio = contrastRatio(token(name), token('ground-dark'))
+    expect(
+      ratio,
+      `--color-${name} is ${ratio.toFixed(2)}:1 on the ink ground, below 4.5:1`,
+    ).toBeGreaterThanOrEqual(4.5)
+  })
 })
 
-describe('the no-network promise is enforced, not just intended', () => {
+describe('the network promise is enforced, not just intended', () => {
   const headers = readFileSync('_headers', 'utf8')
 
-  it('ships a CSP that blocks any request to a third party', () => {
-    // The claim that birth data never leaves the browser should not rest on
-    // the code continuing to contain no fetch call. `connect-src 'self'` makes
-    // the browser enforce it: a request to anywhere else is blocked outright.
-    expect(headers).toMatch(/connect-src 'self'/)
+  it('lets map tiles out and nothing else', () => {
+    // The map made this claim narrower than it used to be, so the test has to
+    // pin the new line exactly rather than assert the old absolute.
+    //
+    // Tiles are images, and only from OSM's tile hosts.
+    expect(headers).toMatch(/img-src 'self' data: https:\/\/\*\.tile\.openstreetmap\.org/)
+  })
+
+  it('keeps every channel that could carry birth data closed', () => {
+    // This is the load-bearing one. Tiles travel by img-src; birth data would
+    // have to travel by fetch, XHR, WebSocket or sendBeacon, and all four are
+    // governed by connect-src. Keeping it 'self' means the browser blocks
+    // them outright, whatever the code happens to say.
+    expect(headers).toMatch(/connect-src 'self'[;\s]/)
     expect(headers).toMatch(/default-src 'self'/)
     expect(headers).toMatch(/font-src 'self'/)
     // The form has no action and never navigates; blocking it means a
@@ -180,27 +217,79 @@ describe('the no-network promise is enforced, not just intended', () => {
   })
 
   it('sends no referrer', () => {
+    // Also the tile requests: OSM learns which square of the map was drawn,
+    // and not which page asked for it.
     expect(headers).toMatch(/Referrer-Policy: no-referrer/)
+  })
+
+  it('names no third party but the tile hosts', () => {
+    const csp = headers.match(/Content-Security-Policy: (.+)/)![1]
+    const hosts = [...csp.matchAll(/https:\/\/[^\s;]+/g)].map((match) => match[0])
+    expect(hosts).toEqual(['https://*.tile.openstreetmap.org'])
   })
 })
 
 describe('no scroll hijacking', () => {
-  const app = readFileSync('src/App.tsx', 'utf8')
-  const layers = readFileSync('src/components/Layers.tsx', 'utf8')
+  /*
+   * Every component, found rather than listed. The original version of this
+   * test named App.tsx and Layers.tsx, which meant any new component was
+   * exempt from the rule on the day it was written.
+   */
+  const sources = [
+    ['App', 'src/App.tsx'] as [string, string],
+    ...['src/components', 'src/sections'].flatMap((dir) =>
+      readdirSync(dir)
+        .filter((file) => file.endsWith('.tsx'))
+        .map((file) => [file.replace(/\.tsx$/, ''), `${dir}/${file}`] as [string, string])),
+  ].map(([name, path]) => [name, readFileSync(path, 'utf8')] as [string, string])
 
-  it('never attaches a scroll or wheel listener', () => {
-    for (const [name, source] of [['App', app], ['Layers', layers]] as const) {
-      expect(source, `${name} listens to scroll`).not.toMatch(/addEventListener\(\s*['"]scroll/)
-      expect(source, `${name} listens to wheel`).not.toMatch(/addEventListener\(\s*['"](wheel|touchmove)/)
-      expect(source, `${name} calls preventDefault on scroll`).not.toMatch(/onWheel|onScroll/)
+  it('covers more than a handful of files, so the sweep is doing something', () => {
+    expect(sources.length).toBeGreaterThan(3)
+  })
+
+  it.each(sources)('%s never attaches a scroll or wheel listener', (name, source) => {
+    expect(source, `${name} listens to scroll`).not.toMatch(/addEventListener\(\s*['"]scroll/)
+    expect(source, `${name} listens to wheel`).not.toMatch(/addEventListener\(\s*['"](wheel|touchmove)/)
+    expect(source, `${name} calls preventDefault on scroll`).not.toMatch(/onWheel|onScroll/)
+  })
+
+  it('never lets the map swallow the page scroll', () => {
+    /*
+     * Leaflet's default is scrollWheelZoom: true, which takes over the wheel
+     * whenever the pointer is over the map. On a page that is one long descent
+     * that is scroll hijacking by another name, so the option has to be
+     * present and off wherever a map is constructed.
+     */
+    const maps = sources.filter(([, source]) => /L\.map\(/.test(source))
+    expect(maps.length, 'no Leaflet map found to check').toBeGreaterThan(0)
+
+    for (const [name, source] of maps) {
+      expect(source, `${name} does not disable scrollWheelZoom`)
+        .toMatch(/scrollWheelZoom:\s*false/)
     }
   })
 
   it('uses no WebGL or Three.js', () => {
-    const everything = css + app + layers
+    const everything = css + sources.map(([, source]) => source).join('')
     // Matched against imports and API calls, not prose -- the word "three"
     // appears legitimately in comments describing the three layers.
     expect(everything).not.toMatch(/from\s+['"]three|require\(\s*['"]three|\bTHREE\./)
     expect(everything).not.toMatch(/getContext\(\s*['"]webgl/i)
+  })
+})
+
+describe('the map respects the motion preference', () => {
+  const picker = readFileSync('src/components/LocationPicker.tsx', 'utf8')
+
+  it('disables Leaflet animation under reduced motion', () => {
+    // Leaflet animates zoom, pan and tile fade by default. The reduced-motion
+    // rule in the brief is about the page, and the map is part of the page.
+    expect(picker).toMatch(/prefers-reduced-motion: reduce/)
+    for (const option of ['zoomAnimation', 'fadeAnimation', 'markerZoomAnimation']) {
+      // Negated, i.e. `zoomAnimation: !still` -- the option is on only when
+      // the reader has not asked for reduced motion.
+      expect(picker, `${option} is not conditioned on the motion preference`)
+        .toContain(`${option}: !`)
+    }
   })
 })

@@ -1,10 +1,16 @@
 # Cloudflare Pages headers.
 #
-# The site makes no network calls after load, and the CSP says so rather than
-# relying on the code staying that way: connect-src 'self' means a fetch to a
-# third party is blocked by the browser, not merely absent from the source.
+# The CSP draws the exact line the colophon claims, rather than relying on the
+# code continuing to stay on the right side of it.
+#
+# One third party is reachable and it is reachable by one channel: img-src
+# admits the OpenStreetMap tile hosts, so the map can load tile images.
+# Everything else is shut. In particular connect-src stays 'self', so fetch,
+# XHR, WebSocket and sendBeacon to anywhere but this origin are blocked by the
+# browser -- there is no channel by which birth data could be transmitted, and
+# a tile request can carry nothing but the square of the map on screen.
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'none'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.tile.openstreetmap.org; font-src 'self'; connect-src 'self'; form-action 'none'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'
   Referrer-Policy: no-referrer
   X-Content-Type-Options: nosniff
   Permissions-Policy: geolocation=(), camera=(), microphone=(), interest-cohort=()
